@@ -329,6 +329,7 @@
           <button id="refreshBtn" class="btn-secondary" type="button">Actualizar</button>
           <button id="talkbackBtn" class="btn-secondary" type="button">Activar microfono</button>
         </div>
+        <p id="cloudflareUsage" class="help">Uso Cloudflare: cargando...</p>
         <ul id="cameraList" class="camera-list"></ul>
       </aside>
     </section>
@@ -345,6 +346,7 @@
     const remoteVideo = document.getElementById('remoteVideo');
     const cameraListEl = document.getElementById('cameraList');
     const talkbackBtn = document.getElementById('talkbackBtn');
+    const cloudflareUsageEl = document.getElementById('cloudflareUsage');
 
     let room = defaultRoom;
     roomEl.value = defaultRoom;
@@ -409,6 +411,7 @@
           return false;
         }
         isAuthenticated = true;
+        await loadCloudflareUsage();
         return true;
       } catch (_) {
         goToLogin();
@@ -672,6 +675,15 @@
         }
       } catch (err) {
         setStatus(`No se pudo cargar camaras: ${err.message}`);
+      }
+    }
+
+    async function loadCloudflareUsage() {
+      try {
+        const data = await api('/api/cloudflare-usage');
+        cloudflareUsageEl.textContent = `Uso Cloudflare mes: ${data.egressGb} GB / ${data.freeTierGb} GB (${data.usagePercent}%)`;
+      } catch (err) {
+        cloudflareUsageEl.textContent = `Uso Cloudflare no disponible: ${err.message}`;
       }
     }
 

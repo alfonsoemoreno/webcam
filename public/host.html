@@ -344,6 +344,11 @@
             <div class="talkback-item">Sin audio entrante.</div>
           </div>
         </div>
+
+        <div class="status-box">
+          <p class="status-title">Uso Cloudflare del mes</p>
+          <p id="cloudflareUsage" class="status-value">Cargando...</p>
+        </div>
       </aside>
 
       <section class="stage">
@@ -365,6 +370,7 @@
     const viewerLinkEl = document.getElementById('viewerLink');
     const localVideo = document.getElementById('localVideo');
     const talkbackListEl = document.getElementById('talkbackList');
+    const cloudflareUsageEl = document.getElementById('cloudflareUsage');
     const peers = new Map();
     const pendingIceByViewer = new Map();
     const talkbackAudioEls = new Map();
@@ -426,6 +432,7 @@
           return false;
         }
         isAuthenticated = true;
+        await loadCloudflareUsage();
         return true;
       } catch (_) {
         goToLogin();
@@ -653,6 +660,15 @@
         setStatus('Link viewer copiado.');
       } catch {
         setStatus('No se pudo copiar el link automaticamente.');
+      }
+    }
+
+    async function loadCloudflareUsage() {
+      try {
+        const data = await api('/api/cloudflare-usage');
+        cloudflareUsageEl.textContent = `${data.egressGb} GB / ${data.freeTierGb} GB (${data.usagePercent}%)`;
+      } catch (err) {
+        cloudflareUsageEl.textContent = `No disponible: ${err.message}`;
       }
     }
 

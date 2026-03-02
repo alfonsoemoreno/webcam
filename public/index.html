@@ -207,7 +207,7 @@
   <main class="shell">
     <header class="top">
       <div class="brand">Sentinel Cam</div>
-      <div class="chip">Multi camera - WebRTC - HTTPS</div>
+      <div id="usageChip" class="chip">Uso Cloudflare: cargando...</div>
     </header>
 
     <section class="content">
@@ -238,9 +238,10 @@
     <footer class="foot">Tip: abre Host en equipos con webcam y Viewer en el celular.</footer>
   </main>
   <script type="module">
-    import { signOut, syncSession } from './auth-client.js';
+    import { getStoredToken, signOut, syncSession } from './auth-client.js';
     const loginBtn = document.getElementById('loginBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+    const usageChip = document.getElementById('usageChip');
 
     function showLoggedInUi() {
       loginBtn.classList.add('hidden');
@@ -260,8 +261,30 @@
           return;
         }
         showLoggedInUi();
+        await loadCloudflareUsage();
       } catch (_) {
         showLoggedOutUi();
+      }
+    }
+
+    async function loadCloudflareUsage() {
+      try {
+        const token = getStoredToken();
+        if (!token) {
+          usageChip.textContent = 'Uso Cloudflare: inicia sesion';
+          return;
+        }
+        const res = await fetch('/api/cloudflare-usage', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          usageChip.textContent = 'Uso Cloudflare: no disponible';
+          return;
+        }
+        const data = await res.json();
+        usageChip.textContent = `Uso Cloudflare: ${data.egressGb} GB / ${data.freeTierGb} GB (${data.usagePercent}%)`;
+      } catch {
+        usageChip.textContent = 'Uso Cloudflare: no disponible';
       }
     }
 
