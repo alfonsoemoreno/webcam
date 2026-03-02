@@ -231,8 +231,14 @@
         data = null;
       }
       if (!res.ok) {
-        const error = new Error((data && data.error) || 'No se pudo completar la solicitud');
+        const message =
+          (data && (data.error || data.message || data.msg)) ||
+          (data && data.details && (data.details.message || data.details.error)) ||
+          (data && Array.isArray(data.errors) && data.errors[0] && (data.errors[0].message || data.errors[0].error)) ||
+          'No se pudo completar la solicitud';
+        const error = new Error(message);
         error.status = res.status;
+        error.payload = data;
         throw error;
       }
       return data;
@@ -254,7 +260,7 @@
         if (mode === 'signin') {
           await api('/api/auth/sign-in', { email, password });
         } else {
-          await api('/api/auth/sign-up', { email, password, name: email.split('@')[0] || 'User' });
+          await api('/api/auth/sign-up', { email, password });
           await api('/api/auth/sign-in', { email, password });
         }
 

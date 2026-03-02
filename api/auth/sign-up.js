@@ -8,12 +8,20 @@ module.exports = async (req, res) => {
 
   try {
     const body = await parseJsonBody(req);
-    const result = await callNeonAuth({
+    let result = await callNeonAuth({
       req,
       method: 'POST',
       path: '/sign-up/email',
       body,
     });
+    if (result.status === 404) {
+      result = await callNeonAuth({
+        req,
+        method: 'POST',
+        path: '/signup/email',
+        body,
+      });
+    }
 
     copyResponseHeaders(result.headers, res);
     sendJson(res, result.status, result.json);
