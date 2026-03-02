@@ -75,6 +75,16 @@ function getNeonAuthBaseUrl() {
   return baseUrl ? baseUrl.replace(/\/+$/, '') : '';
 }
 
+function deriveOrigin(req) {
+  const originHeader = String(req.headers.origin || '').trim();
+  if (originHeader) return originHeader;
+
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').trim();
+  if (!host) return '';
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').trim();
+  return `${proto}://${host}`;
+}
+
 function extractSetCookies(headers) {
   if (typeof headers.getSetCookie === 'function') {
     return headers.getSetCookie();
@@ -106,6 +116,11 @@ async function callNeonAuth({ req, method, path, body = null }) {
   }
 
   const headers = { 'Content-Type': 'application/json' };
+  const origin = deriveOrigin(req);
+  if (origin) {
+    headers.Origin = origin;
+    headers.Referer = `${origin}/`;
+  }
   if (req.headers.cookie) {
     headers.Cookie = req.headers.cookie;
   }
