@@ -316,7 +316,7 @@
         </div>
         <p id="status" class="status">Esperando seleccion de camara...</p>
         <video id="remoteVideo" autoplay playsinline controls></video>
-        <p class="help">Si no escuchas audio, toca el reproductor para habilitar sonido en el navegador.</p>
+        <p class="help">Si no escuchas audio, toca el reproductor para habilitar sonido. Para hablar al host, activa el microfono.</p>
       </section>
 
       <aside class="side">
@@ -327,6 +327,7 @@
         <div class="btn-row">
           <button id="joinBtn" class="btn-primary" type="button">Conectar ID</button>
           <button id="refreshBtn" class="btn-secondary" type="button">Actualizar</button>
+          <button id="talkbackBtn" class="btn-secondary" type="button">Activar microfono</button>
         </div>
         <ul id="cameraList" class="camera-list"></ul>
       </aside>
@@ -343,6 +344,7 @@
     const roomEl = document.getElementById('room');
     const remoteVideo = document.getElementById('remoteVideo');
     const cameraListEl = document.getElementById('cameraList');
+    const talkbackBtn = document.getElementById('talkbackBtn');
 
     let room = defaultRoom;
     roomEl.value = defaultRoom;
@@ -352,6 +354,8 @@
     let listTimer = null;
     let pc = null;
     let isAuthenticated = false;
+    let talkbackEnabled = false;
+    let talkbackStream = null;
 
     let rtcConfig = {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -425,6 +429,36 @@
       }
     }
 
+    async function ensureTalkbackStream() {
+      if (talkbackStream) return talkbackStream;
+      talkbackStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      return talkbackStream;
+    }
+
+    function setTalkbackButtonState() {
+      talkbackBtn.textContent = talkbackEnabled ? 'Microfono activo' : 'Activar microfono';
+      talkbackBtn.className = talkbackEnabled ? 'btn-primary' : 'btn-secondary';
+    }
+
+    async function attachTalkbackTracks(conn) {
+      if (!talkbackEnabled) return;
+      const stream = await ensureTalkbackStream();
+      const senders = conn.getSenders();
+      for (const track of stream.getAudioTracks()) {
+        const alreadySending = senders.some((sender) => sender.track && sender.track.id === track.id);
+        if (!alreadySending) {
+          conn.addTrack(track, stream);
+        }
+      }
+    }
+
     function ensurePeer(hostId) {
       if (pc) return pc;
 
@@ -468,6 +502,7 @@
         const hostId = msg.from;
         const conn = ensurePeer(hostId);
         await conn.setRemoteDescription(new RTCSessionDescription(msg.payload));
+        await attachTalkbackTracks(conn);
         const answer = await conn.createAnswer();
         await conn.setLocalDescription(answer);
         await api('/api/send', 'POST', {
@@ -527,6 +562,39 @@
         pollTimer = setInterval(poll, 1000);
       } catch (err) {
         setStatus(`No se pudo conectar: ${err.message}`);
+      }
+    }
+
+    async function toggleTalkback() {
+      try {
+        if (!talkbackEnabled) {
+          await ensureTalkbackStream();
+          talkbackEnabled = true;
+          setStatus('Microfono activo. Tu audio se enviara al host conectado.');
+        } else {
+          talkbackEnabled = false;
+          if (talkbackStream) {
+            talkbackStream.getTracks().forEach((track) => track.stop());
+            talkbackStream = null;
+          }
+          if (pc) {
+            for (const sender of pc.getSenders()) {
+              if (sender.track && sender.track.kind === 'audio') {
+                pc.removeTrack(sender);
+              }
+            }
+          }
+          setStatus('Microfono desactivado.');
+        }
+
+        if (viewerId) {
+          setStatus('Aplicando cambio de microfono. Reconectando...');
+          await join();
+        }
+      } catch (err) {
+        setStatus(`No se pudo activar microfono: ${err.message}`);
+      } finally {
+        setTalkbackButtonState();
       }
     }
 
@@ -604,14 +672,20 @@
       if (viewerId) {
         navigator.sendBeacon('/api/leave', JSON.stringify({ room, clientId: viewerId }));
       }
+      if (talkbackStream) {
+        talkbackStream.getTracks().forEach((track) => track.stop());
+        talkbackStream = null;
+      }
       if (listTimer) clearInterval(listTimer);
     });
 
     document.getElementById('joinBtn').addEventListener('click', join);
     document.getElementById('refreshBtn').addEventListener('click', loadCameras);
+    talkbackBtn.addEventListener('click', toggleTalkback);
     document.getElementById('logoutBtn').addEventListener('click', logout);
 
     renderEmptyList();
+    setTalkbackButtonState();
     ensureAuth().then((ok) => {
       if (!ok) return;
       loadCameras();

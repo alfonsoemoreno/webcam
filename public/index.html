@@ -186,6 +186,8 @@
       text-decoration: none;
     }
 
+    .hidden { display: none !important; }
+
     @keyframes drift {
       from { transform: translate3d(0, 0, 0); }
       to { transform: translate3d(2.5vmax, -1.4vmax, 0); }
@@ -216,8 +218,8 @@
           Diseno pensado para uso rapido desde escritorio y celular.
         </p>
         <div class="actions">
-          <a class="btn" href="/login.html">Iniciar sesion</a>
-          <button id="logoutBtn" class="btn" type="button">Cerrar sesion</button>
+          <a id="loginBtn" class="btn hidden" href="/login.html">Iniciar sesion</a>
+          <button id="logoutBtn" class="btn hidden" type="button">Cerrar sesion</button>
         </div>
       </div>
 
@@ -237,15 +239,29 @@
   </main>
   <script type="module">
     import { signOut, syncSession } from './auth-client.js';
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    function showLoggedInUi() {
+      loginBtn.classList.add('hidden');
+      logoutBtn.classList.remove('hidden');
+    }
+
+    function showLoggedOutUi() {
+      logoutBtn.classList.add('hidden');
+      loginBtn.classList.remove('hidden');
+    }
 
     async function ensureAuth() {
       try {
         const session = await syncSession();
         if (!session || !session.token) {
-          location.replace('/login.html');
+          showLoggedOutUi();
+          return;
         }
+        showLoggedInUi();
       } catch (_) {
-        location.replace('/login.html');
+        showLoggedOutUi();
       }
     }
 
@@ -258,7 +274,7 @@
       location.replace('/login.html');
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', logout);
+    logoutBtn.addEventListener('click', logout);
     ensureAuth();
   </script>
 </body>

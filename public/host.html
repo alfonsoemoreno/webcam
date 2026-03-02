@@ -264,6 +264,20 @@
       margin: 0;
     }
 
+    .talkback-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .talkback-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(8, 18, 28, 0.72);
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.55); }
       70% { box-shadow: 0 0 0 11px rgba(251, 113, 133, 0); }
@@ -322,6 +336,13 @@
           <p class="status-title">Link viewer</p>
           <code id="viewerLink" class="viewer-url">-</code>
         </div>
+
+        <div class="status-box">
+          <p class="status-title">Audio talkback</p>
+          <div id="talkbackList" class="talkback-list">
+            <div class="talkback-item">Sin audio entrante.</div>
+          </div>
+        </div>
       </aside>
 
       <section class="stage">
@@ -342,7 +363,9 @@
     const cameraNameEl = document.getElementById('cameraName');
     const viewerLinkEl = document.getElementById('viewerLink');
     const localVideo = document.getElementById('localVideo');
+    const talkbackListEl = document.getElementById('talkbackList');
     const peers = new Map();
+    const talkbackAudioEls = new Map();
 
     let room = 'main';
     let hostId = null;
@@ -426,6 +449,26 @@
       const pc = new RTCPeerConnection(rtcConfig);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
+      pc.ontrack = (event) => {
+        if (event.track.kind !== 'audio') return;
+        const mediaStream = event.streams && event.streams[0]
+          ? event.streams[0]
+          : new MediaStream([event.track]);
+
+        let audioEl = talkbackAudioEls.get(viewerId);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.autoplay = true;
+          audioEl.playsInline = true;
+          talkbackAudioEls.set(viewerId, audioEl);
+        }
+        audioEl.srcObject = mediaStream;
+        audioEl.play().catch(() => {
+          // Host browser may require user gesture to start remote audio.
+        });
+        renderTalkbackList();
+      };
+
       pc.onicecandidate = ({ candidate }) => {
         if (!candidate) return;
         api('/api/send', 'POST', {
@@ -440,6 +483,7 @@
       pc.onconnectionstatechange = () => {
         if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           peers.delete(viewerId);
+          removeTalkbackAudio(viewerId);
         }
       };
 
@@ -474,6 +518,7 @@
           pc.close();
           peers.delete(msg.viewerId);
         }
+        removeTalkbackAudio(msg.viewerId);
         return;
       }
 
@@ -554,6 +599,33 @@
       }
     }
 
+    function removeTalkbackAudio(viewerId) {
+      const audioEl = talkbackAudioEls.get(viewerId);
+      if (!audioEl) return;
+      audioEl.pause();
+      audioEl.srcObject = null;
+      talkbackAudioEls.delete(viewerId);
+      renderTalkbackList();
+    }
+
+    function renderTalkbackList() {
+      talkbackListEl.innerHTML = '';
+      if (talkbackAudioEls.size === 0) {
+        const item = document.createElement('div');
+        item.className = 'talkback-item';
+        item.textContent = 'Sin audio entrante.';
+        talkbackListEl.appendChild(item);
+        return;
+      }
+
+      for (const viewerId of talkbackAudioEls.keys()) {
+        const item = document.createElement('div');
+        item.className = 'talkback-item';
+        item.textContent = `Audio activo desde viewer ${viewerId}`;
+        talkbackListEl.appendChild(item);
+      }
+    }
+
     async function logout() {
       try {
         await signOut();
@@ -567,6 +639,9 @@
       if (pollTimer) clearInterval(pollTimer);
       if (hostId) {
         navigator.sendBeacon('/api/leave', JSON.stringify({ room, clientId: hostId }));
+      }
+      for (const viewerId of talkbackAudioEls.keys()) {
+        removeTalkbackAudio(viewerId);
       }
     });
 

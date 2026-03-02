@@ -1,4 +1,4 @@
-import { createAuthClient } from 'https://esm.sh/@neondatabase/neon-js/auth';
+import { createAuthClient } from 'https://esm.sh/@neondatabase/neon-js/auth?target=es2022&browser&bundle';
 
 const TOKEN_KEY = 'sentinel_auth_token';
 const USER_KEY = 'sentinel_auth_user';
