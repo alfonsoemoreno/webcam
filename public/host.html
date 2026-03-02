@@ -287,7 +287,10 @@
   <main class="shell">
     <header class="top">
       <div class="brand">Sentinel Cam · Host</div>
-      <a class="back" href="/">Volver al inicio</a>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <a class="back" href="/">Volver al inicio</a>
+        <button id="logoutBtn" class="btn-secondary" type="button">Cerrar sesion</button>
+      </div>
     </header>
 
     <section class="layout">
@@ -343,6 +346,7 @@
     let hostId = null;
     let stream = null;
     let pollTimer = null;
+    let isAuthenticated = false;
 
     let rtcConfig = {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -376,6 +380,26 @@
         throw new Error(err);
       }
       return res.json();
+    }
+
+    function goToLogin() {
+      const next = encodeURIComponent(`${location.pathname}${location.search}`);
+      location.replace(`/login.html?next=${next}`);
+    }
+
+    async function ensureAuth() {
+      try {
+        const response = await api('/api/auth/session');
+        if (!response.authenticated) {
+          goToLogin();
+          return false;
+        }
+        isAuthenticated = true;
+        return true;
+      } catch (_) {
+        goToLogin();
+        return false;
+      }
     }
 
     async function loadRtcConfig() {
@@ -479,6 +503,11 @@
 
     async function start() {
       try {
+        if (!isAuthenticated) {
+          setStatus('Sesion no valida. Redirigiendo...');
+          goToLogin();
+          return;
+        }
         await loadRtcConfig();
         room = roomEl.value.trim() || 'main';
         const cameraName = cameraNameEl.value.trim() || room;
@@ -519,6 +548,15 @@
       }
     }
 
+    async function logout() {
+      try {
+        await api('/api/auth/sign-out', 'POST', {});
+      } catch (_) {
+        // Ignore errors and continue logout flow.
+      }
+      location.replace('/login.html');
+    }
+
     window.addEventListener('beforeunload', () => {
       if (pollTimer) clearInterval(pollTimer);
       if (hostId) {
@@ -528,6 +566,9 @@
 
     document.getElementById('startBtn').addEventListener('click', start);
     document.getElementById('copyLinkBtn').addEventListener('click', copyViewerLink);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    ensureAuth();
   </script>
 </body>
 </html>

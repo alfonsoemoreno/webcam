@@ -1,6 +1,7 @@
 const {
   getSql,
   getRoomFromQuery,
+  requireAuth,
   sendJson,
   touchClient,
 } = require('./_lib');
@@ -12,6 +13,9 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const session = await requireAuth(req, res);
+    if (!session) return;
+
     const sql = getSql();
     const room = getRoomFromQuery(req);
     const clientId = String(req.query.clientId || '').trim();

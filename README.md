@@ -5,7 +5,7 @@ Aplicacion multicamara para que varios computadores actuen como host y el celula
 ## Arquitectura
 
 1. Vercel sirve frontend HTTPS y API serverless.
-2. Neon guarda estado de senalizacion (`clients`, `messages`, `camera_hosts`).
+2. Neon guarda estado de senalizacion (`clients`, `messages`, `camera_hosts`) y autentica usuarios con Neon Auth.
 3. Cloudflare TURN mejora conectividad WebRTC en redes complejas.
 
 ## Paso 1: Subir a GitHub
@@ -33,7 +33,16 @@ git push -u origin main
 2. Copia `DATABASE_URL`.
 3. En SQL Editor de Neon ejecuta el schema de [db/schema.sql](/Users/alfonsomoreno/Developer/webcam/db/schema.sql).
 
-## Paso 3: Configurar TURN en Cloudflare
+## Paso 3: Configurar Neon Auth
+
+1. En Neon habilita Auth para tu proyecto.
+2. Copia el endpoint base de Neon Auth (ejemplo: `https://<proyecto>.neon.tech/auth`).
+3. En Vercel agrega:
+- `NEON_AUTH_BASE_URL`
+
+La app usa login en `https://TU_APP_VERCEL/login.html` y protege todos los endpoints de streaming con sesion activa.
+
+## Paso 4: Configurar TURN en Cloudflare
 
 1. En Cloudflare Realtime TURN crea una API key.
 2. Te entregara:
@@ -47,29 +56,31 @@ git push -u origin main
 
 La app genera credenciales TURN temporales automaticamente desde `/api/rtc-config`.
 
-## Paso 4: Desplegar en Vercel
+## Paso 5: Desplegar en Vercel
 
 1. Importa el repo de GitHub en Vercel.
 2. En `Environment Variables` agrega:
 
 - `DATABASE_URL`
+- `NEON_AUTH_BASE_URL`
 - `TURN_KEY_ID`
 - `TURN_KEY_API_TOKEN`
 - `TURN_TTL_SECONDS` (opcional)
 
 3. Deploy.
 
-## Paso 5: Uso
+## Paso 6: Uso
 
-1. En cada computador host abre: `https://TU_APP_VERCEL/host.html`
-2. Define:
+1. Abre `https://TU_APP_VERCEL/login.html` y crea/inicia sesion.
+2. En cada computador host abre: `https://TU_APP_VERCEL/host.html`
+3. Define:
 
 - `Camara` (nombre visible)
 - `ID camara` (unico: sala, entrada, cocina)
 
-3. Pulsa `Iniciar camara` y permite camara/microfono.
-4. En celular abre: `https://TU_APP_VERCEL/viewer.html`
-5. Selecciona camara desde la lista.
+4. Pulsa `Iniciar transmision` y permite camara/microfono.
+5. En celular abre: `https://TU_APP_VERCEL/viewer.html`
+6. Selecciona camara desde la lista.
 
 ## Variables locales
 

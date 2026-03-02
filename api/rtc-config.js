@@ -1,4 +1,4 @@
-const { sendJson } = require('./_lib');
+const { requireAuth, sendJson } = require('./_lib');
 
 async function getCloudflareIceServers() {
   const keyId = process.env.TURN_KEY_ID;
@@ -41,6 +41,9 @@ module.exports = async (req, res) => {
     sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
+
+  const session = await requireAuth(req, res);
+  if (!session) return;
 
   const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 

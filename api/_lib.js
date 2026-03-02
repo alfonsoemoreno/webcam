@@ -70,6 +70,105 @@ function randomClientId() {
   return crypto.randomUUID();
 }
 
+function getNeonAuthBaseUrl() {
+  const baseUrl = String(process.env.NEON_AUTH_BASE_URL || '').trim();
+  return baseUrl ? baseUrl.replace(/\/+$/, '') : '';
+}
+
+function extractSetCookies(headers) {
+  if (typeof headers.getSetCookie === 'function') {
+    return headers.getSetCookie();
+  }
+  const single = headers.get('set-cookie');
+  return single ? [single] : [];
+}
+
+function copyResponseHeaders(sourceHeaders, res) {
+  const contentType = sourceHeaders.get('content-type');
+  if (contentType) {
+    res.setHeader('Content-Type', contentType);
+  }
+  const setCookies = extractSetCookies(sourceHeaders);
+  if (setCookies.length) {
+    res.setHeader('Set-Cookie', setCookies);
+  }
+}
+
+async function callNeonAuth({ req, method, path, body = null }) {
+  const baseUrl = getNeonAuthBaseUrl();
+  if (!baseUrl) {
+    return {
+      ok: false,
+      status: 500,
+      json: { error: 'Missing NEON_AUTH_BASE_URL env var' },
+      headers: new Headers(),
+    };
+  }
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (req.headers.cookie) {
+    headers.Cookie = req.headers.cookie;
+  }
+  if (req.headers.authorization) {
+    headers.Authorization = req.headers.authorization;
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  let json;
+  try {
+    json = await response.json();
+  } catch {
+    json = { error: 'Invalid response from auth provider' };
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    json,
+    headers: response.headers,
+  };
+}
+
+async function getSessionFromNeon(req) {
+  const attempts = ['/get-session', '/session'];
+  let last = null;
+
+  for (const path of attempts) {
+    const result = await callNeonAuth({ req, method: 'GET', path });
+    last = result;
+    if (result.ok || result.status !== 404) {
+      break;
+    }
+  }
+
+  const payload = last?.json || {};
+  const session = payload?.data || payload?.session || null;
+  return {
+    ok: Boolean(last?.ok && session && session.user),
+    status: last?.status || 500,
+    session,
+    raw: payload,
+  };
+}
+
+async function requireAuth(req, res) {
+  if (!getNeonAuthBaseUrl()) {
+    sendJson(res, 500, { error: 'Auth not configured: missing NEON_AUTH_BASE_URL' });
+    return null;
+  }
+  const sessionResult = await getSessionFromNeon(req);
+  if (!sessionResult.ok) {
+    sendJson(res, 401, { error: 'Unauthorized' });
+    return null;
+  }
+  return sessionResult.session;
+}
+
 async function queueMessage(sql, { room, toClientId, type, fromClientId = null, payload = null, viewerId = null }) {
   await sql`
     INSERT INTO messages (room, to_client_id, type, from_client_id, payload, viewer_id)
@@ -90,11 +189,16 @@ async function touchClient(sql, { room, clientId }) {
 module.exports = {
   STALE_SECONDS,
   getSql,
+  getNeonAuthBaseUrl,
   isActiveDate,
   parseJsonBody,
   sendJson,
   getRoomFromQuery,
   randomClientId,
+  callNeonAuth,
+  copyResponseHeaders,
+  getSessionFromNeon,
+  requireAuth,
   queueMessage,
   touchClient,
 };

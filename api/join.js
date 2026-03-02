@@ -5,6 +5,7 @@ const {
   parseJsonBody,
   randomClientId,
   queueMessage,
+  requireAuth,
   sendJson,
 } = require('./_lib');
 
@@ -15,6 +16,9 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const session = await requireAuth(req, res);
+    if (!session) return;
+
     const sql = getSql();
     const { room: roomRaw, role, cameraName: cameraNameRaw } = await parseJsonBody(req);
     const room = String(roomRaw || 'main').trim() || 'main';

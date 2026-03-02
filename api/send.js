@@ -2,6 +2,7 @@ const {
   getSql,
   parseJsonBody,
   queueMessage,
+  requireAuth,
   sendJson,
   touchClient,
 } = require('./_lib');
@@ -15,6 +16,9 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const session = await requireAuth(req, res);
+    if (!session) return;
+
     const sql = getSql();
     const { room: roomRaw, from, to, type, payload } = await parseJsonBody(req);
     const room = String(roomRaw || 'main').trim() || 'main';

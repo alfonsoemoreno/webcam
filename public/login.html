@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sentinel Cam | Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #08121b;
+      --panel: rgba(12, 23, 34, 0.9);
+      --line: rgba(142, 173, 196, 0.27);
+      --text: #e6f2fa;
+      --muted: #a4b8c8;
+      --accent: #2dd4bf;
+      --accent-2: #22d3ee;
+      --danger: #fb7185;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      background:
+        radial-gradient(circle at 14% 16%, rgba(45, 212, 191, 0.19), transparent 31%),
+        radial-gradient(circle at 86% 14%, rgba(34, 211, 238, 0.17), transparent 28%),
+        linear-gradient(155deg, var(--bg), #0d1a26);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+    }
+
+    .card {
+      width: min(940px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      background: var(--panel);
+      box-shadow: 0 26px 48px rgba(3, 9, 16, 0.48);
+    }
+
+    .hero {
+      padding: 28px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(165deg, rgba(12, 26, 39, 0.95), rgba(8, 17, 26, 0.8));
+    }
+
+    .brand {
+      font-family: 'Space Grotesk', sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+      font-size: 0.95rem;
+    }
+
+    h1 {
+      margin: 10px 0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(1.7rem, 4vw, 2.6rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .panel {
+      padding: 24px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .tab {
+      border: 1px solid var(--line);
+      background: rgba(8, 18, 27, 0.85);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.88rem;
+    }
+
+    .tab.active {
+      border-color: rgba(34, 211, 238, 0.7);
+      box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.18) inset;
+    }
+
+    label {
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 11px;
+      font-size: 0.96rem;
+      background: rgba(7, 15, 23, 0.72);
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(34, 211, 238, 0.7);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.18);
+    }
+
+    .submit {
+      margin-top: 10px;
+      border: none;
+      border-radius: 11px;
+      padding: 11px 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: #032229;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    }
+
+    .status {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      background: rgba(8, 18, 27, 0.7);
+      word-break: break-word;
+    }
+
+    .status.bad { color: var(--danger); }
+    .status.ok { color: #6ee7b7; }
+
+    @media (max-width: 900px) {
+      .card { grid-template-columns: 1fr; }
+      .hero { border-right: none; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <section class="hero">
+      <div class="brand">Sentinel Cam</div>
+      <h1>Acceso seguro para tu sistema de camaras.</h1>
+      <p>
+        Usa Neon Auth para autorizar host y viewer. Solo usuarios autenticados podran transmitir o ver camaras.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="tabs">
+        <button id="tabSignIn" class="tab active" type="button">Iniciar sesion</button>
+        <button id="tabSignUp" class="tab" type="button">Crear cuenta</button>
+      </div>
+
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="tu@email.com" />
+
+      <label for="password">Contrasena</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Minimo 8 caracteres" />
+
+      <button id="submitBtn" class="submit" type="button">Iniciar sesion</button>
+      <p id="status" class="status">Ingresa tus credenciales.</p>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const emailEl = document.getElementById('email');
+    const passwordEl = document.getElementById('password');
+    const submitBtn = document.getElementById('submitBtn');
+    const tabSignIn = document.getElementById('tabSignIn');
+    const tabSignUp = document.getElementById('tabSignUp');
+
+    const params = new URLSearchParams(location.search);
+    const nextPath = params.get('next') || '/';
+
+    let mode = 'signin';
+
+    function setStatus(message, tone = 'neutral') {
+      statusEl.textContent = message;
+      statusEl.className = 'status';
+      if (tone === 'bad') statusEl.classList.add('bad');
+      if (tone === 'ok') statusEl.classList.add('ok');
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      const signingIn = mode === 'signin';
+      tabSignIn.classList.toggle('active', signingIn);
+      tabSignUp.classList.toggle('active', !signingIn);
+      submitBtn.textContent = signingIn ? 'Iniciar sesion' : 'Crear cuenta';
+      setStatus(signingIn ? 'Ingresa tus credenciales.' : 'Crea una cuenta para continuar.');
+    }
+
+    async function api(path, payload) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        const error = new Error((data && data.error) || 'No se pudo completar la solicitud');
+        error.status = res.status;
+        throw error;
+      }
+      return data;
+    }
+
+    async function submit() {
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+
+      if (!email || !password) {
+        setStatus('Email y contrasena son obligatorios.', 'bad');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      setStatus('Validando credenciales...');
+
+      try {
+        if (mode === 'signin') {
+          await api('/api/auth/sign-in', { email, password });
+        } else {
+          await api('/api/auth/sign-up', { email, password, name: email.split('@')[0] || 'User' });
+          await api('/api/auth/sign-in', { email, password });
+        }
+
+        setStatus('Acceso concedido. Redirigiendo...', 'ok');
+        location.replace(nextPath);
+      } catch (err) {
+        setStatus(err.message || 'No se pudo autenticar.', 'bad');
+      } finally {
+        submitBtn.disabled = false;
+      }
+    }
+
+    async function checkSession() {
+      try {
+        const res = await fetch('/api/auth/session', { credentials: 'include' });
+        if (res.ok) {
+          location.replace(nextPath);
+        }
+      } catch (_) {
+        // Ignore and stay on login.
+      }
+    }
+
+    tabSignIn.addEventListener('click', () => setMode('signin'));
+    tabSignUp.addEventListener('click', () => setMode('signup'));
+    submitBtn.addEventListener('click', submit);
+
+    emailEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+    });
+    passwordEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+    });
+
+    checkSession();
+  </script>
+</body>
+</html>

@@ -167,6 +167,25 @@
       background: rgba(8, 16, 23, 0.78);
     }
 
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--text);
+      background: rgba(13, 23, 33, 0.88);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.86rem;
+      text-decoration: none;
+    }
+
     @keyframes drift {
       from { transform: translate3d(0, 0, 0); }
       to { transform: translate3d(2.5vmax, -1.4vmax, 0); }
@@ -196,6 +215,10 @@
           Escoge modo host para publicar una webcam o modo viewer para monitorear tus camaras activas.
           Diseno pensado para uso rapido desde escritorio y celular.
         </p>
+        <div class="actions">
+          <a class="btn" href="/login.html">Iniciar sesion</a>
+          <button id="logoutBtn" class="btn" type="button">Cerrar sesion</button>
+        </div>
       </div>
 
       <div class="cards">
@@ -212,5 +235,40 @@
 
     <footer class="foot">Tip: abre Host en equipos con webcam y Viewer en el celular.</footer>
   </main>
+  <script>
+    async function api(path, method = 'GET', body) {
+      const options = { method, headers: {} };
+      if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, options);
+      if (!res.ok) throw new Error('request failed');
+      return res.json();
+    }
+
+    async function ensureAuth() {
+      try {
+        const data = await api('/api/auth/session');
+        if (!data.authenticated) {
+          location.replace('/login.html');
+        }
+      } catch (_) {
+        location.replace('/login.html');
+      }
+    }
+
+    async function logout() {
+      try {
+        await api('/api/auth/sign-out', 'POST', {});
+      } catch (_) {
+        // Ignore and continue.
+      }
+      location.replace('/login.html');
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    ensureAuth();
+  </script>
 </body>
 </html>

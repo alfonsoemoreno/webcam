@@ -302,7 +302,10 @@
   <main class="shell">
     <header class="top">
       <div class="brand">Sentinel Cam · Viewer</div>
-      <a class="back" href="/">Volver al inicio</a>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <a class="back" href="/">Volver al inicio</a>
+        <button id="logoutBtn" class="btn-secondary" type="button">Cerrar sesion</button>
+      </div>
     </header>
 
     <section class="layout">
@@ -346,6 +349,7 @@
     let pollTimer = null;
     let listTimer = null;
     let pc = null;
+    let isAuthenticated = false;
 
     let rtcConfig = {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -379,6 +383,26 @@
         throw new Error(err);
       }
       return res.json();
+    }
+
+    function goToLogin() {
+      const next = encodeURIComponent(`${location.pathname}${location.search}`);
+      location.replace(`/login.html?next=${next}`);
+    }
+
+    async function ensureAuth() {
+      try {
+        const response = await api('/api/auth/session');
+        if (!response.authenticated) {
+          goToLogin();
+          return false;
+        }
+        isAuthenticated = true;
+        return true;
+      } catch (_) {
+        goToLogin();
+        return false;
+      }
     }
 
     async function loadRtcConfig() {
@@ -470,6 +494,11 @@
 
     async function join() {
       try {
+        if (!isAuthenticated) {
+          setStatus('Sesion no valida. Redirigiendo...');
+          goToLogin();
+          return;
+        }
         await loadRtcConfig();
         if (pollTimer) {
           clearInterval(pollTimer);
@@ -501,6 +530,7 @@
 
     async function loadCameras() {
       try {
+        if (!isAuthenticated) return;
         const data = await api('/api/cameras');
         cameraListEl.innerHTML = '';
         if (!data.cameras.length) {
@@ -554,6 +584,15 @@
       }
     }
 
+    async function logout() {
+      try {
+        await api('/api/auth/sign-out', 'POST', {});
+      } catch (_) {
+        // Ignore errors and continue logout flow.
+      }
+      location.replace('/login.html');
+    }
+
     window.addEventListener('beforeunload', () => {
       if (pollTimer) clearInterval(pollTimer);
       if (viewerId) {
@@ -564,10 +603,14 @@
 
     document.getElementById('joinBtn').addEventListener('click', join);
     document.getElementById('refreshBtn').addEventListener('click', loadCameras);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
 
     renderEmptyList();
-    loadCameras();
-    listTimer = setInterval(loadCameras, 5000);
+    ensureAuth().then((ok) => {
+      if (!ok) return;
+      loadCameras();
+      listTimer = setInterval(loadCameras, 5000);
+    });
   </script>
 </body>
 </html>

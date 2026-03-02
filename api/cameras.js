@@ -1,4 +1,4 @@
-const { STALE_SECONDS, getSql, sendJson } = require('./_lib');
+const { STALE_SECONDS, getSql, requireAuth, sendJson } = require('./_lib');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -7,6 +7,9 @@ module.exports = async (req, res) => {
   }
 
   try {
+    const session = await requireAuth(req, res);
+    if (!session) return;
+
     const sql = getSql();
     const rows = await sql`
       SELECT
