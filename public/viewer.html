@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Viewer Webcam</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 1rem; }
+    video { width: min(900px, 100%); border: 1px solid #ccc; border-radius: 8px; background: #000; }
+    .row { margin: 0.75rem 0; }
+    input { width: 240px; }
+    button { margin-left: 0.5rem; }
+    #cameraList { padding-left: 1.2rem; }
+    #cameraList li { margin: 0.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Viewer webcam</h1>
+  <div class="row">
+    <label>ID camara:</label>
+    <input id="room" value="main" />
+    <button id="joinBtn">Conectar</button>
+    <button id="refreshBtn">Actualizar lista</button>
+  </div>
+  <div class="row">
+    <strong>Camaras activas:</strong>
+    <ul id="cameraList"></ul>
+  </div>
+  <div class="row">Estado: <span id="status">Esperando...</span></div>
+  <video id="remoteVideo" autoplay playsinline controls></video>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const defaultRoom = params.get('room') || 'main';
+
+    const statusEl = document.getElementById('status');
+    const roomEl = document.getElementById('room');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const cameraListEl = document.getElementById('cameraList');
+
+    let room = defaultRoom;
+    roomEl.value = defaultRoom;
+
+    let viewerId = null;
+    let pollTimer = null;
+    let listTimer = null;
+    let pc = null;
+
+    let rtcConfig = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    };
+    let rtcConfigLoaded = false;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    async function api(path, method = 'GET', body) {
+      const options = { method, headers: {} };
+      if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, options);
+      if (!res.ok) {
+        let err = 'Error';
+        try {
+          const j = await res.json();
+          err = j.error || err;
+        } catch {}
+        throw new Error(err);
+      }
+      return res.json();
+    }
+
+    async function loadRtcConfig() {
+      if (rtcConfigLoaded) return;
+      try {
+        const data = await api('/api/rtc-config');
+        if (data && Array.isArray(data.iceServers) && data.iceServers.length) {
+          rtcConfig = { iceServers: data.iceServers };
+        }
+      } catch (_) {
+        // Keep default STUN config if endpoint is unavailable.
+      } finally {
+        rtcConfigLoaded = true;
+      }
+    }
+
+    function ensurePeer(hostId) {
+      if (pc) return pc;
+
+      pc = new RTCPeerConnection(rtcConfig);
+      pc.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+        remoteVideo.play().catch(() => {
+          setStatus('Video activo, toca el reproductor para activar audio.');
+        });
+      };
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate) return;
+        api('/api/send', 'POST', {
+          room,
+          from: viewerId,
+          to: hostId,
+          type: 'ice',
+          payload: candidate,
+        }).catch((err) => setStatus(`ICE error: ${err.message}`));
+      };
+
+      pc.onconnectionstatechange = () => {
+        setStatus(`Conexion: ${pc.connectionState}`);
+      };
+
+      return pc;
+    }
+
+    async function handleMessage(msg) {
+      if (msg.type === 'host-left') {
+        setStatus('El host se desconecto');
+        if (pc) {
+          pc.close();
+          pc = null;
+        }
+        return;
+      }
+
+      if (msg.type === 'offer') {
+        const hostId = msg.from;
+        const conn = ensurePeer(hostId);
+        await conn.setRemoteDescription(new RTCSessionDescription(msg.payload));
+        const answer = await conn.createAnswer();
+        await conn.setLocalDescription(answer);
+        await api('/api/send', 'POST', {
+          room,
+          from: viewerId,
+          to: hostId,
+          type: 'answer',
+          payload: answer,
+        });
+        setStatus('Recibiendo video...');
+        return;
+      }
+
+      if (msg.type === 'ice' && pc && msg.payload) {
+        await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+      }
+    }
+
+    async function poll() {
+      if (!viewerId) return;
+      try {
+        const data = await api(`/api/poll?room=${encodeURIComponent(room)}&clientId=${encodeURIComponent(viewerId)}`);
+        for (const msg of data.messages) {
+          await handleMessage(msg);
+        }
+      } catch (err) {
+        setStatus(`Poll error: ${err.message}`);
+      }
+    }
+
+    async function join() {
+      try {
+        await loadRtcConfig();
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        if (viewerId) {
+          await api('/api/leave', 'POST', { room, clientId: viewerId });
+          viewerId = null;
+        }
+        if (pc) {
+          pc.close();
+          pc = null;
+        }
+        remoteVideo.srcObject = null;
+
+        room = roomEl.value.trim() || 'main';
+        const joined = await api('/api/join', 'POST', { room, role: 'viewer' });
+        viewerId = joined.clientId;
+        setStatus(joined.hasHost ? 'Conectado, esperando stream...' : 'Sin host activo en este room');
+        pollTimer = setInterval(poll, 1000);
+      } catch (err) {
+        setStatus(`No se pudo conectar: ${err.message}`);
+      }
+    }
+
+    async function loadCameras() {
+      try {
+        const data = await api('/api/cameras');
+        cameraListEl.innerHTML = '';
+        if (!data.cameras.length) {
+          const li = document.createElement('li');
+          li.textContent = 'No hay camaras activas';
+          cameraListEl.appendChild(li);
+          return;
+        }
+
+        for (const camera of data.cameras) {
+          const li = document.createElement('li');
+          const label = document.createElement('span');
+          label.textContent = `${camera.name} (id: ${camera.room}, viewers: ${camera.viewers})`;
+          const button = document.createElement('button');
+          button.textContent = 'Ver';
+          button.addEventListener('click', async () => {
+            roomEl.value = camera.room;
+            await join();
+          });
+          li.appendChild(label);
+          li.appendChild(button);
+          cameraListEl.appendChild(li);
+        }
+      } catch (err) {
+        setStatus(`No se pudo cargar camaras: ${err.message}`);
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (pollTimer) clearInterval(pollTimer);
+      if (viewerId) {
+        navigator.sendBeacon('/api/leave', JSON.stringify({ room, clientId: viewerId }));
+      }
+      if (listTimer) clearInterval(listTimer);
+    });
+
+    document.getElementById('joinBtn').addEventListener('click', join);
+    document.getElementById('refreshBtn').addEventListener('click', loadCameras);
+    loadCameras();
+    listTimer = setInterval(loadCameras, 5000);
+  </script>
+</body>
+</html>

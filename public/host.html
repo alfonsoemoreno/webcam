@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Host Webcam</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 1rem; }
+    video { width: min(900px, 100%); border: 1px solid #ccc; border-radius: 8px; }
+    .row { margin: 0.75rem 0; }
+    input { width: 240px; }
+    code { background: #f5f5f5; padding: 0.2rem 0.4rem; }
+  </style>
+</head>
+<body>
+  <h1>Host webcam</h1>
+  <div class="row">
+    <label>Camara:</label>
+    <input id="cameraName" value="Sala" />
+  </div>
+  <div class="row">
+    <label>ID camara:</label>
+    <input id="room" value="sala" />
+    <button id="startBtn">Iniciar camara</button>
+  </div>
+  <div class="row">Estado: <span id="status">Esperando...</span></div>
+  <div class="row">Link viewer general: <code id="viewerLink">-</code></div>
+  <video id="localVideo" autoplay playsinline muted></video>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const roomEl = document.getElementById('room');
+    const cameraNameEl = document.getElementById('cameraName');
+    const viewerLinkEl = document.getElementById('viewerLink');
+    const localVideo = document.getElementById('localVideo');
+    const peers = new Map();
+
+    let room = 'main';
+    let hostId = null;
+    let stream = null;
+    let pollTimer = null;
+
+    let rtcConfig = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    };
+    let rtcConfigLoaded = false;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    async function api(path, method = 'GET', body) {
+      const options = { method, headers: {} };
+      if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, options);
+      if (!res.ok) {
+        let err = 'Error';
+        try {
+          const j = await res.json();
+          err = j.error || err;
+        } catch {}
+        throw new Error(err);
+      }
+      return res.json();
+    }
+
+    async function loadRtcConfig() {
+      if (rtcConfigLoaded) return;
+      try {
+        const data = await api('/api/rtc-config');
+        if (data && Array.isArray(data.iceServers) && data.iceServers.length) {
+          rtcConfig = { iceServers: data.iceServers };
+        }
+      } catch (_) {
+        // Keep default STUN config if endpoint is unavailable.
+      } finally {
+        rtcConfigLoaded = true;
+      }
+    }
+
+    function createPeer(viewerId) {
+      const pc = new RTCPeerConnection(rtcConfig);
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate) return;
+        api('/api/send', 'POST', {
+          room,
+          from: hostId,
+          to: viewerId,
+          type: 'ice',
+          payload: candidate,
+        }).catch((err) => setStatus(`ICE error: ${err.message}`));
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+          peers.delete(viewerId);
+        }
+      };
+
+      peers.set(viewerId, pc);
+      return pc;
+    }
+
+    async function handleViewerJoined(viewerId) {
+      if (!stream) return;
+      const pc = createPeer(viewerId);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await api('/api/send', 'POST', {
+        room,
+        from: hostId,
+        to: viewerId,
+        type: 'offer',
+        payload: offer,
+      });
+      setStatus(`Enviando video a viewer ${viewerId}`);
+    }
+
+    async function handleMessage(msg) {
+      if (msg.type === 'viewer-joined') {
+        await handleViewerJoined(msg.viewerId);
+        return;
+      }
+
+      if (msg.type === 'viewer-left') {
+        const pc = peers.get(msg.viewerId);
+        if (pc) {
+          pc.close();
+          peers.delete(msg.viewerId);
+        }
+        return;
+      }
+
+      if (msg.type === 'answer') {
+        const viewerId = msg.from;
+        const pc = peers.get(viewerId);
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+        }
+        return;
+      }
+
+      if (msg.type === 'ice') {
+        const viewerId = msg.from;
+        const pc = peers.get(viewerId);
+        if (pc && msg.payload) {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+        }
+      }
+    }
+
+    async function poll() {
+      if (!hostId) return;
+      try {
+        const data = await api(`/api/poll?room=${encodeURIComponent(room)}&clientId=${encodeURIComponent(hostId)}`);
+        for (const msg of data.messages) {
+          await handleMessage(msg);
+        }
+      } catch (err) {
+        setStatus(`Poll error: ${err.message}`);
+      }
+    }
+
+    async function start() {
+      try {
+        await loadRtcConfig();
+        room = roomEl.value.trim() || 'main';
+        const cameraName = cameraNameEl.value.trim() || room;
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        localVideo.srcObject = stream;
+
+        const joined = await api('/api/join', 'POST', { room, role: 'host', cameraName });
+        hostId = joined.clientId;
+
+        const viewerUrl = `${location.origin}/viewer.html`;
+        viewerLinkEl.textContent = viewerUrl;
+
+        setStatus(`Host activo: ${joined.cameraName}`);
+        pollTimer = setInterval(poll, 1000);
+      } catch (err) {
+        setStatus(`No se pudo iniciar: ${err.message}`);
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (pollTimer) clearInterval(pollTimer);
+      if (hostId) {
+        navigator.sendBeacon('/api/leave', JSON.stringify({ room, clientId: hostId }));
+      }
+    });
+
+    document.getElementById('startBtn').addEventListener('click', start);
+  </script>
+</body>
+</html>

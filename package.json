@@ -1,0 +1,17 @@
+{
+  "name": "webcam",
+  "version": "1.0.0",
+  "description": "Webcam security app with Vercel + Neon + Cloudflare TURN",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
