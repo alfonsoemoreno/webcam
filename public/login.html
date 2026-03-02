@@ -260,7 +260,8 @@
         if (mode === 'signin') {
           await api('/api/auth/sign-in', { email, password });
         } else {
-          await api('/api/auth/sign-up', { email, password });
+          const derivedName = email.split('@')[0].trim() || 'Usuario';
+          await api('/api/auth/sign-up', { email, password, name: derivedName });
           await api('/api/auth/sign-in', { email, password });
         }
 
