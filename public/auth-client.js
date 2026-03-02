@@ -19,7 +19,7 @@ async function fetchAuthConfig() {
 
 export async function getAuthClient() {
   if (!authClientPromise) {
-    authClientPromise = fetchAuthConfig().then((config) => createAuthClient({ baseURL: config.authUrl }));
+    authClientPromise = fetchAuthConfig().then((config) => createAuthClient(config.authUrl));
   }
   return authClientPromise;
 }
