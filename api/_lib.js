@@ -156,8 +156,8 @@ function validateJwtClaims(payload) {
 
 async function verifyJwt(token) {
   const { header, payload, signingInput, signature } = parseJwt(token);
-  if (header.alg !== 'RS256') {
-    throw new Error('Unsupported token algorithm');
+  if (!header.alg) {
+    throw new Error('Missing token algorithm');
   }
   if (!header.kid) {
     throw new Error('Missing token kid');
@@ -168,21 +168,23 @@ async function verifyJwt(token) {
     throw new Error('Unknown token key id');
   }
 
+  const algConfig = getJwtAlgConfig(header.alg);
   const key = await crypto.webcrypto.subtle.importKey(
     'jwk',
     jwk,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
+    algConfig.importAlgorithm,
     false,
     ['verify']
   );
 
+  const signatureForVerify = algConfig.joseToDer
+    ? joseSignatureToDer(signature, algConfig.josePartLength)
+    : signature;
+
   const valid = await crypto.webcrypto.subtle.verify(
-    'RSASSA-PKCS1-v1_5',
+    algConfig.verifyAlgorithm,
     key,
-    signature,
+    signatureForVerify,
     signingInput
   );
   if (!valid) {
@@ -191,6 +193,92 @@ async function verifyJwt(token) {
 
   validateJwtClaims(payload);
   return payload;
+}
+
+function getJwtAlgConfig(alg) {
+  const map = {
+    RS256: {
+      importAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      verifyAlgorithm: 'RSASSA-PKCS1-v1_5',
+    },
+    RS384: {
+      importAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-384' },
+      verifyAlgorithm: 'RSASSA-PKCS1-v1_5',
+    },
+    RS512: {
+      importAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-512' },
+      verifyAlgorithm: 'RSASSA-PKCS1-v1_5',
+    },
+    PS256: {
+      importAlgorithm: { name: 'RSA-PSS', hash: 'SHA-256' },
+      verifyAlgorithm: { name: 'RSA-PSS', saltLength: 32 },
+    },
+    PS384: {
+      importAlgorithm: { name: 'RSA-PSS', hash: 'SHA-384' },
+      verifyAlgorithm: { name: 'RSA-PSS', saltLength: 48 },
+    },
+    PS512: {
+      importAlgorithm: { name: 'RSA-PSS', hash: 'SHA-512' },
+      verifyAlgorithm: { name: 'RSA-PSS', saltLength: 64 },
+    },
+    ES256: {
+      importAlgorithm: { name: 'ECDSA', namedCurve: 'P-256' },
+      verifyAlgorithm: { name: 'ECDSA', hash: 'SHA-256' },
+      joseToDer: true,
+      josePartLength: 32,
+    },
+    ES384: {
+      importAlgorithm: { name: 'ECDSA', namedCurve: 'P-384' },
+      verifyAlgorithm: { name: 'ECDSA', hash: 'SHA-384' },
+      joseToDer: true,
+      josePartLength: 48,
+    },
+    ES512: {
+      importAlgorithm: { name: 'ECDSA', namedCurve: 'P-521' },
+      verifyAlgorithm: { name: 'ECDSA', hash: 'SHA-512' },
+      joseToDer: true,
+      josePartLength: 66,
+    },
+    EdDSA: {
+      importAlgorithm: { name: 'Ed25519' },
+      verifyAlgorithm: 'Ed25519',
+    },
+  };
+
+  const config = map[alg];
+  if (!config) {
+    throw new Error(`Unsupported token algorithm: ${alg}`);
+  }
+  return config;
+}
+
+function trimLeadingZeroes(buf) {
+  let i = 0;
+  while (i < buf.length - 1 && buf[i] === 0) i += 1;
+  return buf.slice(i);
+}
+
+function encodeDerInteger(raw) {
+  let value = trimLeadingZeroes(raw);
+  if (value[0] & 0x80) {
+    value = Buffer.concat([Buffer.from([0]), value]);
+  }
+  return Buffer.concat([Buffer.from([0x02, value.length]), value]);
+}
+
+function joseSignatureToDer(signature, partLength) {
+  if (!(signature instanceof Buffer)) {
+    signature = Buffer.from(signature);
+  }
+  if (signature.length !== partLength * 2) {
+    throw new Error('Invalid ECDSA signature length');
+  }
+  const r = signature.subarray(0, partLength);
+  const s = signature.subarray(partLength);
+  const rDer = encodeDerInteger(r);
+  const sDer = encodeDerInteger(s);
+  const seqLen = rDer.length + sDer.length;
+  return Buffer.concat([Buffer.from([0x30, seqLen]), rDer, sDer]);
 }
 
 function extractBearerToken(req) {
