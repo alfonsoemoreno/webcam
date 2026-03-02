@@ -35,12 +35,17 @@ git push -u origin main
 
 ## Paso 3: Configurar TURN en Cloudflare
 
-1. Crea credenciales TURN en Cloudflare Realtime.
-2. Guarda:
+1. En Cloudflare Realtime TURN crea una API key.
+2. Te entregara:
+- `Token ID`
+- `API Token`
+3. En Vercel usa esos valores como:
 
-- `TURN_URL`
-- `TURN_USERNAME`
-- `TURN_CREDENTIAL`
+- `TURN_KEY_ID` = Token ID
+- `TURN_KEY_API_TOKEN` = API Token
+- `TURN_TTL_SECONDS` = `86400` (opcional)
+
+La app genera credenciales TURN temporales automaticamente desde `/api/rtc-config`.
 
 ## Paso 4: Desplegar en Vercel
 
@@ -48,9 +53,9 @@ git push -u origin main
 2. En `Environment Variables` agrega:
 
 - `DATABASE_URL`
-- `TURN_URL`
-- `TURN_USERNAME`
-- `TURN_CREDENTIAL`
+- `TURN_KEY_ID`
+- `TURN_KEY_API_TOKEN`
+- `TURN_TTL_SECONDS` (opcional)
 
 3. Deploy.
 
