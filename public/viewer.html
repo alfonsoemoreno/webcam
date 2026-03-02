@@ -353,6 +353,7 @@
     let pollTimer = null;
     let listTimer = null;
     let pc = null;
+    let pendingHostIce = [];
     let isAuthenticated = false;
     let talkbackEnabled = false;
     let talkbackStream = null;
@@ -495,6 +496,7 @@
           pc.close();
           pc = null;
         }
+        pendingHostIce = [];
         return;
       }
 
@@ -502,6 +504,16 @@
         const hostId = msg.from;
         const conn = ensurePeer(hostId);
         await conn.setRemoteDescription(new RTCSessionDescription(msg.payload));
+        if (pendingHostIce.length) {
+          for (const candidate of pendingHostIce) {
+            try {
+              await conn.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+              setStatus(`ICE flush error: ${err.message}`);
+            }
+          }
+          pendingHostIce = [];
+        }
         await attachTalkbackTracks(conn);
         const answer = await conn.createAnswer();
         await conn.setLocalDescription(answer);
@@ -517,7 +529,11 @@
       }
 
       if (msg.type === 'ice' && pc && msg.payload) {
-        await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+        } else {
+          pendingHostIce.push(msg.payload);
+        }
       }
     }
 
@@ -553,6 +569,7 @@
           pc.close();
           pc = null;
         }
+        pendingHostIce = [];
         remoteVideo.srcObject = null;
 
         room = roomEl.value.trim() || 'main';

@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     if (!session) return;
 
     const sql = getSql();
-    const { room: roomRaw, role, cameraName: cameraNameRaw } = await parseJsonBody(req);
+    const { room: roomRaw, role, cameraName: cameraNameRaw, forceTakeover } = await parseJsonBody(req);
     const room = String(roomRaw || 'main').trim() || 'main';
 
     if (!['host', 'viewer'].includes(role)) {
@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
     const camera = cameraRows[0] || null;
     const activeHostId = camera && isActiveDate(camera.last_seen) ? camera.host_client_id : null;
 
-    if (role === 'host' && activeHostId) {
+    if (role === 'host' && activeHostId && !forceTakeover) {
       sendJson(res, 409, { error: 'Room already has a host' });
       return;
     }
@@ -52,6 +52,18 @@ module.exports = async (req, res) => {
     const cameraName = String(cameraNameRaw || camera?.camera_name || room).trim() || room;
 
     if (role === 'host') {
+      if (activeHostId && forceTakeover) {
+        await queueMessage(sql, {
+          room,
+          toClientId: activeHostId,
+          type: 'host-replaced',
+        });
+        await sql`
+          DELETE FROM clients
+          WHERE room = ${room} AND client_id = ${activeHostId}
+        `;
+      }
+
       await sql`
         INSERT INTO camera_hosts (room, camera_name, host_client_id, updated_at)
         VALUES (${room}, ${cameraName}, ${clientId}, NOW())

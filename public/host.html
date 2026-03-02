@@ -324,6 +324,7 @@
 
         <div class="actions">
           <button id="startBtn" class="btn-primary" type="button">Iniciar transmision</button>
+          <button id="forceBtn" class="btn-secondary" type="button">Forzar control</button>
           <button id="copyLinkBtn" class="btn-secondary" type="button">Copiar link viewer</button>
         </div>
 
@@ -365,6 +366,7 @@
     const localVideo = document.getElementById('localVideo');
     const talkbackListEl = document.getElementById('talkbackList');
     const peers = new Map();
+    const pendingIceByViewer = new Map();
     const talkbackAudioEls = new Map();
 
     let room = 'main';
@@ -483,12 +485,26 @@
       pc.onconnectionstatechange = () => {
         if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           peers.delete(viewerId);
+          pendingIceByViewer.delete(viewerId);
           removeTalkbackAudio(viewerId);
         }
       };
 
       peers.set(viewerId, pc);
       return pc;
+    }
+
+    async function flushPendingIce(viewerId, pc) {
+      const queue = pendingIceByViewer.get(viewerId);
+      if (!queue || !queue.length) return;
+      pendingIceByViewer.delete(viewerId);
+      for (const candidate of queue) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          setStatus(`ICE flush error: ${err.message}`);
+        }
+      }
     }
 
     async function handleViewerJoined(viewerId) {
@@ -518,6 +534,7 @@
           pc.close();
           peers.delete(msg.viewerId);
         }
+        pendingIceByViewer.delete(msg.viewerId);
         removeTalkbackAudio(msg.viewerId);
         return;
       }
@@ -527,7 +544,29 @@
         const pc = peers.get(viewerId);
         if (pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          await flushPendingIce(viewerId, pc);
         }
+        return;
+      }
+
+      if (msg.type === 'host-replaced') {
+        setStatus('Este host fue reemplazado por otro. Deteniendo transmision local.');
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+          localVideo.srcObject = null;
+        }
+        for (const [viewerId, pc] of peers.entries()) {
+          pc.close();
+          peers.delete(viewerId);
+          pendingIceByViewer.delete(viewerId);
+          removeTalkbackAudio(viewerId);
+        }
+        hostId = null;
         return;
       }
 
@@ -535,7 +574,13 @@
         const viewerId = msg.from;
         const pc = peers.get(viewerId);
         if (pc && msg.payload) {
-          await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          } else {
+            const queue = pendingIceByViewer.get(viewerId) || [];
+            queue.push(msg.payload);
+            pendingIceByViewer.set(viewerId, queue);
+          }
         }
       }
     }
@@ -553,6 +598,14 @@
     }
 
     async function start() {
+      return startWithOptions({ forceTakeover: false });
+    }
+
+    async function forceStart() {
+      return startWithOptions({ forceTakeover: true });
+    }
+
+    async function startWithOptions({ forceTakeover }) {
       try {
         if (!isAuthenticated) {
           setStatus('Sesion no valida. Redirigiendo...');
@@ -572,7 +625,7 @@
         });
         localVideo.srcObject = stream;
 
-        const joined = await api('/api/join', 'POST', { room, role: 'host', cameraName });
+        const joined = await api('/api/join', 'POST', { room, role: 'host', cameraName, forceTakeover });
         hostId = joined.clientId;
 
         const viewerUrl = `${location.origin}/viewer.html`;
@@ -581,6 +634,10 @@
         setStatus(`Host activo: ${joined.cameraName}`);
         pollTimer = setInterval(poll, 1000);
       } catch (err) {
+        if (err.message === 'Room already has a host' && !forceTakeover) {
+          setStatus('ID camara ocupado. Usa \"Forzar control\" para reemplazar el host actual.');
+          return;
+        }
         setStatus(`No se pudo iniciar: ${err.message}`);
       }
     }
@@ -646,6 +703,7 @@
     });
 
     document.getElementById('startBtn').addEventListener('click', start);
+    document.getElementById('forceBtn').addEventListener('click', forceStart);
     document.getElementById('copyLinkBtn').addEventListener('click', copyViewerLink);
     document.getElementById('logoutBtn').addEventListener('click', logout);
 
