@@ -3,31 +3,332 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Viewer Webcam</title>
+  <title>Sentinel Cam | Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: Arial, sans-serif; margin: 1rem; }
-    video { width: min(900px, 100%); border: 1px solid #ccc; border-radius: 8px; background: #000; }
-    .row { margin: 0.75rem 0; }
-    input { width: 240px; }
-    button { margin-left: 0.5rem; }
-    #cameraList { padding-left: 1.2rem; }
-    #cameraList li { margin: 0.5rem 0; }
+    :root {
+      --bg: #091019;
+      --bg-soft: #0f1b27;
+      --panel: rgba(13, 25, 38, 0.84);
+      --panel-2: rgba(15, 31, 46, 0.86);
+      --line: rgba(138, 171, 196, 0.27);
+      --text: #e8f3fb;
+      --muted: #a3b7c8;
+      --accent: #2dd4bf;
+      --accent-2: #22d3ee;
+      --danger: #fb7185;
+      --shadow: 0 22px 45px rgba(3, 8, 14, 0.46);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'IBM Plex Sans', sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 82% 8%, rgba(45, 212, 191, 0.17), transparent 28%),
+        radial-gradient(circle at 6% 88%, rgba(34, 211, 238, 0.14), transparent 30%),
+        linear-gradient(155deg, var(--bg) 0%, #0c1823 45%, #08131d 100%);
+      padding: 18px;
+    }
+
+    .shell {
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      animation: appear 220ms ease;
+    }
+
+    .top {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(8, 17, 26, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.04rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+    }
+
+    .back {
+      text-decoration: none;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 0.87rem;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.2fr minmax(310px, 380px);
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .player {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-2);
+      padding: 14px;
+      min-height: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .player-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      margin: 0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.32rem;
+      letter-spacing: -0.01em;
+    }
+
+    .badge {
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      background: rgba(8, 17, 26, 0.7);
+    }
+
+    .status {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(8, 18, 28, 0.7);
+      color: var(--text);
+      font-size: 0.95rem;
+      line-height: 1.45;
+      min-height: 47px;
+    }
+
+    .status.ok { color: #6ee7b7; }
+    .status.bad { color: var(--danger); }
+
+    video {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(122, 152, 176, 0.35);
+      background: #02070b;
+      min-height: 290px;
+      object-fit: cover;
+    }
+
+    .help {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .side {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-2);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 420px;
+    }
+
+    .side h2 {
+      margin: 0;
+      font-size: 1.06rem;
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .field {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    input {
+      flex: 1 1 160px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 11px;
+      font-size: 0.94rem;
+      background: rgba(7, 16, 24, 0.65);
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: rgba(34, 211, 238, 0.72);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    .btn-primary {
+      color: #032229;
+      background: linear-gradient(140deg, var(--accent), var(--accent-2));
+      box-shadow: 0 10px 18px rgba(45, 212, 191, 0.22);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(8, 18, 27, 0.85);
+      border: 1px solid var(--line);
+    }
+
+    .camera-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 9px;
+      max-height: 440px;
+      overflow: auto;
+      scrollbar-width: thin;
+    }
+
+    .camera-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px;
+      background: rgba(8, 17, 26, 0.7);
+      display: grid;
+      gap: 8px;
+    }
+
+    .camera-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+
+    .camera-name {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    .camera-id {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .camera-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .viewer-count {
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+    }
+
+    @keyframes appear {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      body { padding: 12px; }
+      .shell { border-radius: 18px; }
+      .layout { grid-template-columns: 1fr; padding: 12px; }
+      .top { padding: 13px 14px; }
+      .side { min-height: auto; }
+      .camera-list { max-height: none; }
+    }
   </style>
 </head>
 <body>
-  <h1>Viewer webcam</h1>
-  <div class="row">
-    <label>ID camara:</label>
-    <input id="room" value="main" />
-    <button id="joinBtn">Conectar</button>
-    <button id="refreshBtn">Actualizar lista</button>
-  </div>
-  <div class="row">
-    <strong>Camaras activas:</strong>
-    <ul id="cameraList"></ul>
-  </div>
-  <div class="row">Estado: <span id="status">Esperando...</span></div>
-  <video id="remoteVideo" autoplay playsinline controls></video>
+  <main class="shell">
+    <header class="top">
+      <div class="brand">Sentinel Cam · Viewer</div>
+      <a class="back" href="/">Volver al inicio</a>
+    </header>
+
+    <section class="layout">
+      <section class="player">
+        <div class="player-head">
+          <h1 class="title">Monitor en vivo</h1>
+          <span class="badge">WebRTC</span>
+        </div>
+        <p id="status" class="status">Esperando seleccion de camara...</p>
+        <video id="remoteVideo" autoplay playsinline controls></video>
+        <p class="help">Si no escuchas audio, toca el reproductor para habilitar sonido en el navegador.</p>
+      </section>
+
+      <aside class="side">
+        <h2>Seleccion de camaras</h2>
+        <div class="field">
+          <input id="room" value="main" aria-label="ID camara" />
+        </div>
+        <div class="btn-row">
+          <button id="joinBtn" class="btn-primary" type="button">Conectar ID</button>
+          <button id="refreshBtn" class="btn-secondary" type="button">Actualizar</button>
+        </div>
+        <ul id="cameraList" class="camera-list"></ul>
+      </aside>
+    </section>
+  </main>
 
   <script>
     const params = new URLSearchParams(location.search);
@@ -53,6 +354,13 @@
 
     function setStatus(msg) {
       statusEl.textContent = msg;
+      statusEl.className = 'status';
+      if (/error|no se pudo|desconecto|failed|sin host/i.test(msg)) {
+        statusEl.classList.add('bad');
+      }
+      if (/conectado|recibiendo|activo|conexion/i.test(msg)) {
+        statusEl.classList.add('ok');
+      }
     }
 
     async function api(path, method = 'GET', body) {
@@ -187,29 +495,58 @@
       }
     }
 
+    function renderEmptyList() {
+      cameraListEl.innerHTML = '<li class="empty">No hay camaras activas por ahora.</li>';
+    }
+
     async function loadCameras() {
       try {
         const data = await api('/api/cameras');
         cameraListEl.innerHTML = '';
         if (!data.cameras.length) {
-          const li = document.createElement('li');
-          li.textContent = 'No hay camaras activas';
-          cameraListEl.appendChild(li);
+          renderEmptyList();
           return;
         }
 
         for (const camera of data.cameras) {
           const li = document.createElement('li');
-          const label = document.createElement('span');
-          label.textContent = `${camera.name} (id: ${camera.room}, viewers: ${camera.viewers})`;
+          li.className = 'camera-item';
+
+          const meta = document.createElement('div');
+          meta.className = 'camera-meta';
+
+          const name = document.createElement('span');
+          name.className = 'camera-name';
+          name.textContent = camera.name;
+
+          const id = document.createElement('span');
+          id.className = 'camera-id';
+          id.textContent = `id ${camera.room}`;
+
+          meta.appendChild(name);
+          meta.appendChild(id);
+
+          const foot = document.createElement('div');
+          foot.className = 'camera-foot';
+
+          const count = document.createElement('span');
+          count.className = 'viewer-count';
+          count.textContent = `${camera.viewers} viewer(s)`;
+
           const button = document.createElement('button');
+          button.className = 'btn-secondary';
+          button.type = 'button';
           button.textContent = 'Ver';
           button.addEventListener('click', async () => {
             roomEl.value = camera.room;
             await join();
           });
-          li.appendChild(label);
-          li.appendChild(button);
+
+          foot.appendChild(count);
+          foot.appendChild(button);
+
+          li.appendChild(meta);
+          li.appendChild(foot);
           cameraListEl.appendChild(li);
         }
       } catch (err) {
@@ -227,6 +564,8 @@
 
     document.getElementById('joinBtn').addEventListener('click', join);
     document.getElementById('refreshBtn').addEventListener('click', loadCameras);
+
+    renderEmptyList();
     loadCameras();
     listTimer = setInterval(loadCameras, 5000);
   </script>
