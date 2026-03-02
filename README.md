@@ -74,4 +74,4 @@ Puedes copiar [.env.example](/Users/alfonsomoreno/Developer/webcam/.env.example)
 
 1. Video y audio via WebRTC.
 2. La app funciona en HTTPS sin hacks de Chrome.
-3. Si no hay TURN, algunas redes no conectaran aunque STUN este activo.-
+3. Si no hay TURN, algunas redes no conectaran aunque STUN este activo.
