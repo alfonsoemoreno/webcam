@@ -1,4 +1,12 @@
-const { STALE_SECONDS, getSql, requireAuth, sendJson } = require('./_lib');
+const {
+  STALE_SECONDS,
+  fromScopedRoom,
+  getRoomPrefix,
+  getSql,
+  getUserIdFromClaims,
+  requireAuth,
+  sendJson,
+} = require('./_lib');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -9,6 +17,12 @@ module.exports = async (req, res) => {
   try {
     const session = await requireAuth(req, res);
     if (!session) return;
+    const userId = getUserIdFromClaims(session);
+    if (!userId) {
+      sendJson(res, 401, { error: 'Unauthorized: missing user id in token' });
+      return;
+    }
+    const roomPrefix = getRoomPrefix(userId);
 
     const sql = getSql();
     const rows = await sql`
@@ -23,15 +37,17 @@ module.exports = async (req, res) => {
         FROM clients
         WHERE role = 'viewer'
           AND last_seen > NOW() - make_interval(secs => ${STALE_SECONDS})
+          AND room LIKE ${roomPrefix + '%'}
         GROUP BY room
       ) v ON v.room = ch.room
       WHERE h.last_seen > NOW() - make_interval(secs => ${STALE_SECONDS})
+        AND ch.room LIKE ${roomPrefix + '%'}
       ORDER BY name ASC
     `;
 
     sendJson(res, 200, {
       cameras: rows.map((row) => ({
-        room: row.room,
+        room: fromScopedRoom(userId, row.room),
         name: row.name,
         viewers: row.viewers,
       })),

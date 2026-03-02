@@ -1,10 +1,12 @@
 const {
   STALE_SECONDS,
   getSql,
+  getUserIdFromClaims,
   parseJsonBody,
   queueMessage,
   requireAuth,
   sendJson,
+  toScopedRoom,
 } = require('./_lib');
 
 module.exports = async (req, res) => {
@@ -16,10 +18,16 @@ module.exports = async (req, res) => {
   try {
     const session = await requireAuth(req, res);
     if (!session) return;
+    const userId = getUserIdFromClaims(session);
+    if (!userId) {
+      sendJson(res, 401, { error: 'Unauthorized: missing user id in token' });
+      return;
+    }
 
     const sql = getSql();
     const { room: roomRaw, clientId: clientIdRaw } = await parseJsonBody(req);
-    const room = String(roomRaw || 'main').trim() || 'main';
+    const publicRoom = String(roomRaw || 'main').trim() || 'main';
+    const room = toScopedRoom(userId, publicRoom);
     const clientId = String(clientIdRaw || '').trim();
 
     if (!clientId) {

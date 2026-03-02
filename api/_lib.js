@@ -70,6 +70,27 @@ function randomClientId() {
   return crypto.randomUUID();
 }
 
+function getUserIdFromClaims(claims) {
+  const userId = String(claims?.sub || claims?.user_id || '').trim();
+  return userId;
+}
+
+function toScopedRoom(userId, room) {
+  return `${userId}::${room}`;
+}
+
+function getRoomPrefix(userId) {
+  return `${userId}::`;
+}
+
+function fromScopedRoom(userId, scopedRoom) {
+  const prefix = getRoomPrefix(userId);
+  if (!String(scopedRoom || '').startsWith(prefix)) {
+    return scopedRoom;
+  }
+  return scopedRoom.slice(prefix.length);
+}
+
 function getNeonAuthBaseUrl() {
   const baseUrl = String(process.env.NEON_AUTH_BASE_URL || '').trim();
   return baseUrl ? baseUrl.replace(/\/+$/, '') : '';
@@ -332,6 +353,10 @@ module.exports = {
   getSql,
   getNeonAuthBaseUrl,
   getJwksUrl,
+  getUserIdFromClaims,
+  toScopedRoom,
+  fromScopedRoom,
+  getRoomPrefix,
   isActiveDate,
   parseJsonBody,
   sendJson,

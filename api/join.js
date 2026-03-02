@@ -1,12 +1,14 @@
 const {
   STALE_SECONDS,
   getSql,
+  getUserIdFromClaims,
   isActiveDate,
   parseJsonBody,
   randomClientId,
   queueMessage,
   requireAuth,
   sendJson,
+  toScopedRoom,
 } = require('./_lib');
 
 module.exports = async (req, res) => {
@@ -18,10 +20,16 @@ module.exports = async (req, res) => {
   try {
     const session = await requireAuth(req, res);
     if (!session) return;
+    const userId = getUserIdFromClaims(session);
+    if (!userId) {
+      sendJson(res, 401, { error: 'Unauthorized: missing user id in token' });
+      return;
+    }
 
     const sql = getSql();
     const { room: roomRaw, role, cameraName: cameraNameRaw, forceTakeover } = await parseJsonBody(req);
-    const room = String(roomRaw || 'main').trim() || 'main';
+    const publicRoom = String(roomRaw || 'main').trim() || 'main';
+    const room = toScopedRoom(userId, publicRoom);
 
     if (!['host', 'viewer'].includes(role)) {
       sendJson(res, 400, { error: 'Invalid role' });
@@ -94,7 +102,7 @@ module.exports = async (req, res) => {
 
       sendJson(res, 200, {
         clientId,
-        room,
+        room: publicRoom,
         role,
         cameraName,
         hasHost: true,
@@ -113,7 +121,7 @@ module.exports = async (req, res) => {
 
     sendJson(res, 200, {
       clientId,
-      room,
+      room: publicRoom,
       role,
       cameraName,
       hasHost: Boolean(activeHostId),
