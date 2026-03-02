@@ -235,22 +235,13 @@
 
     <footer class="foot">Tip: abre Host en equipos con webcam y Viewer en el celular.</footer>
   </main>
-  <script>
-    async function api(path, method = 'GET', body) {
-      const options = { method, headers: {} };
-      if (body) {
-        options.headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
-      }
-      const res = await fetch(path, options);
-      if (!res.ok) throw new Error('request failed');
-      return res.json();
-    }
+  <script type="module">
+    import { signOut, syncSession } from './auth-client.js';
 
     async function ensureAuth() {
       try {
-        const data = await api('/api/auth/session');
-        if (!data.authenticated) {
+        const session = await syncSession();
+        if (!session || !session.token) {
           location.replace('/login.html');
         }
       } catch (_) {
@@ -260,7 +251,7 @@
 
     async function logout() {
       try {
-        await api('/api/auth/sign-out', 'POST', {});
+        await signOut();
       } catch (_) {
         // Ignore and continue.
       }

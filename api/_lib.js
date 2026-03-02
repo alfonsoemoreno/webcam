@@ -75,116 +75,151 @@ function getNeonAuthBaseUrl() {
   return baseUrl ? baseUrl.replace(/\/+$/, '') : '';
 }
 
-function deriveOrigin(req) {
-  const forcedOrigin = String(process.env.APP_ORIGIN || '').trim();
-  if (forcedOrigin) return forcedOrigin.replace(/\/+$/, '');
-
-  const originHeader = String(req.headers.origin || '').trim();
-  if (originHeader) return originHeader;
-
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').trim();
-  if (!host) return '';
-  const proto = String(req.headers['x-forwarded-proto'] || 'https').trim();
-  return `${proto}://${host}`;
+function getJwksUrl() {
+  return String(process.env.NEON_AUTH_JWKS_URL || '').trim();
 }
 
-function extractSetCookies(headers) {
-  if (typeof headers.getSetCookie === 'function') {
-    return headers.getSetCookie();
-  }
-  const single = headers.get('set-cookie');
-  return single ? [single] : [];
+function decodeBase64Url(value) {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+  return Buffer.from(normalized + padding, 'base64');
 }
 
-function copyResponseHeaders(sourceHeaders, res) {
-  const contentType = sourceHeaders.get('content-type');
-  if (contentType) {
-    res.setHeader('Content-Type', contentType);
+function parseJwt(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) {
+    throw new Error('Invalid token format');
   }
-  const setCookies = extractSetCookies(sourceHeaders);
-  if (setCookies.length) {
-    res.setHeader('Set-Cookie', setCookies);
-  }
+  const [rawHeader, rawPayload, rawSignature] = parts;
+  const header = JSON.parse(decodeBase64Url(rawHeader).toString('utf8'));
+  const payload = JSON.parse(decodeBase64Url(rawPayload).toString('utf8'));
+  const signingInput = Buffer.from(`${rawHeader}.${rawPayload}`);
+  const signature = decodeBase64Url(rawSignature);
+  return { header, payload, signingInput, signature };
 }
 
-async function callNeonAuth({ req, method, path, body = null }) {
-  const baseUrl = getNeonAuthBaseUrl();
-  if (!baseUrl) {
-    return {
-      ok: false,
-      status: 500,
-      json: { error: 'Missing NEON_AUTH_BASE_URL env var' },
-      headers: new Headers(),
+let jwksCache = { expiresAt: 0, keys: new Map() };
+
+async function getJwkByKid(kid) {
+  const jwksUrl = getJwksUrl();
+  if (!jwksUrl) {
+    throw new Error('Missing NEON_AUTH_JWKS_URL env var');
+  }
+
+  const now = Date.now();
+  if (jwksCache.expiresAt < now) {
+    const response = await fetch(jwksUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to load JWKS (${response.status})`);
+    }
+    const body = await response.json();
+    const keys = Array.isArray(body.keys) ? body.keys : [];
+    const map = new Map();
+    for (const key of keys) {
+      if (key && key.kid) {
+        map.set(key.kid, key);
+      }
+    }
+    jwksCache = {
+      expiresAt: now + 10 * 60 * 1000,
+      keys: map,
     };
   }
 
-  const headers = { 'Content-Type': 'application/json' };
-  const origin = deriveOrigin(req);
-  if (origin) {
-    headers.Origin = origin;
-    headers.Referer = `${origin}/`;
-  }
-  if (req.headers.cookie) {
-    headers.Cookie = req.headers.cookie;
-  }
-  if (req.headers.authorization) {
-    headers.Authorization = req.headers.authorization;
-  }
-
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  let json;
-  try {
-    json = await response.json();
-  } catch {
-    json = { error: 'Invalid response from auth provider' };
-  }
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    json,
-    headers: response.headers,
-  };
+  return jwksCache.keys.get(kid) || null;
 }
 
-async function getSessionFromNeon(req) {
-  const attempts = ['/get-session', '/session'];
-  let last = null;
-
-  for (const path of attempts) {
-    const result = await callNeonAuth({ req, method: 'GET', path });
-    last = result;
-    if (result.ok || result.status !== 404) {
-      break;
-    }
+function validateJwtClaims(payload) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (typeof payload.exp === 'number' && nowSeconds >= payload.exp) {
+    throw new Error('Token expired');
+  }
+  if (typeof payload.nbf === 'number' && nowSeconds < payload.nbf) {
+    throw new Error('Token not active yet');
   }
 
-  const payload = last?.json || {};
-  const session = payload?.data || payload?.session || null;
-  return {
-    ok: Boolean(last?.ok && session && session.user),
-    status: last?.status || 500,
-    session,
-    raw: payload,
-  };
+  const issuer = String(process.env.NEON_AUTH_ISSUER || '').trim();
+  if (issuer && payload.iss !== issuer) {
+    throw new Error('Invalid token issuer');
+  }
+
+  const audienceRaw = String(process.env.NEON_AUTH_AUDIENCE || '').trim();
+  if (audienceRaw) {
+    const expectedAudiences = audienceRaw.split(',').map((v) => v.trim()).filter(Boolean);
+    const tokenAudiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    const ok = expectedAudiences.some((aud) => tokenAudiences.includes(aud));
+    if (!ok) {
+      throw new Error('Invalid token audience');
+    }
+  }
+}
+
+async function verifyJwt(token) {
+  const { header, payload, signingInput, signature } = parseJwt(token);
+  if (header.alg !== 'RS256') {
+    throw new Error('Unsupported token algorithm');
+  }
+  if (!header.kid) {
+    throw new Error('Missing token kid');
+  }
+
+  const jwk = await getJwkByKid(header.kid);
+  if (!jwk) {
+    throw new Error('Unknown token key id');
+  }
+
+  const key = await crypto.webcrypto.subtle.importKey(
+    'jwk',
+    jwk,
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      hash: 'SHA-256',
+    },
+    false,
+    ['verify']
+  );
+
+  const valid = await crypto.webcrypto.subtle.verify(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    signature,
+    signingInput
+  );
+  if (!valid) {
+    throw new Error('Invalid token signature');
+  }
+
+  validateJwtClaims(payload);
+  return payload;
+}
+
+function extractBearerToken(req) {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.toLowerCase().startsWith('bearer ')) {
+    return '';
+  }
+  return authHeader.slice(7).trim();
 }
 
 async function requireAuth(req, res) {
-  if (!getNeonAuthBaseUrl()) {
-    sendJson(res, 500, { error: 'Auth not configured: missing NEON_AUTH_BASE_URL' });
+  if (!getJwksUrl()) {
+    sendJson(res, 500, { error: 'Auth not configured: missing NEON_AUTH_JWKS_URL' });
     return null;
   }
-  const sessionResult = await getSessionFromNeon(req);
-  if (!sessionResult.ok) {
-    sendJson(res, 401, { error: 'Unauthorized' });
+
+  const token = extractBearerToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: 'Unauthorized: missing bearer token' });
     return null;
   }
-  return sessionResult.session;
+
+  try {
+    const claims = await verifyJwt(token);
+    return claims;
+  } catch (err) {
+    sendJson(res, 401, { error: `Unauthorized: ${err.message || 'invalid token'}` });
+    return null;
+  }
 }
 
 async function queueMessage(sql, { room, toClientId, type, fromClientId = null, payload = null, viewerId = null }) {
@@ -208,15 +243,14 @@ module.exports = {
   STALE_SECONDS,
   getSql,
   getNeonAuthBaseUrl,
-  deriveOrigin,
+  getJwksUrl,
   isActiveDate,
   parseJsonBody,
   sendJson,
   getRoomFromQuery,
   randomClientId,
-  callNeonAuth,
-  copyResponseHeaders,
-  getSessionFromNeon,
+  verifyJwt,
+  extractBearerToken,
   requireAuth,
   queueMessage,
   touchClient,

@@ -1,42 +1,37 @@
-const {
-  callNeonAuth,
-  deriveOrigin,
-  getNeonAuthBaseUrl,
-  sendJson,
-} = require('../_lib');
+const { getJwksUrl, getNeonAuthBaseUrl, parseJsonBody, sendJson, verifyJwt } = require('../_lib');
 
 module.exports = async (req, res) => {
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 
   try {
-    const derivedOrigin = deriveOrigin(req);
-    const authBaseUrl = getNeonAuthBaseUrl();
+    let token = '';
+    const headerAuth = String(req.headers.authorization || '').trim();
+    if (headerAuth.toLowerCase().startsWith('bearer ')) {
+      token = headerAuth.slice(7).trim();
+    }
 
-    let upstream = null;
-    if (authBaseUrl) {
-      const result = await callNeonAuth({ req, method: 'GET', path: '/session' });
-      upstream = {
-        status: result.status,
-        ok: result.ok,
-        body: result.json,
-      };
+    if (!token && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      token = String(body.token || '').trim();
+    }
+
+    let tokenCheck = null;
+    if (token) {
+      try {
+        tokenCheck = { ok: true, claims: await verifyJwt(token) };
+      } catch (err) {
+        tokenCheck = { ok: false, error: err.message || 'Token invalid' };
+      }
     }
 
     sendJson(res, 200, {
-      derivedOrigin,
-      appOriginEnv: process.env.APP_ORIGIN || null,
-      neonAuthBaseUrl: authBaseUrl || null,
-      requestHeaders: {
-        origin: req.headers.origin || null,
-        referer: req.headers.referer || null,
-        host: req.headers.host || null,
-        xForwardedHost: req.headers['x-forwarded-host'] || null,
-        xForwardedProto: req.headers['x-forwarded-proto'] || null,
-      },
-      upstream,
+      authUrl: getNeonAuthBaseUrl() || null,
+      jwksUrl: getJwksUrl() || null,
+      hasBearerHeader: Boolean(headerAuth),
+      tokenCheck,
     });
   } catch (err) {
     sendJson(res, 500, { error: err.message || 'Server error' });

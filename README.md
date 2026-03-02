@@ -36,12 +36,14 @@ git push -u origin main
 ## Paso 3: Configurar Neon Auth
 
 1. En Neon habilita Auth para tu proyecto.
-2. Copia el endpoint base de Neon Auth (ejemplo: `https://<proyecto>.neon.tech/auth`).
+2. Copia:
+- `Auth URL`
+- `JWKS URL`
 3. En Vercel agrega:
 - `NEON_AUTH_BASE_URL`
-- `APP_ORIGIN` (ejemplo: `https://tu-app.vercel.app`)
+- `NEON_AUTH_JWKS_URL`
 
-La app usa login en `https://TU_APP_VERCEL/login.html` y protege todos los endpoints de streaming con sesion activa.
+La app usa el SDK oficial de Neon Auth en frontend y el backend valida JWT con JWKS.
 
 ## Paso 4: Configurar TURN en Cloudflare
 
@@ -63,8 +65,8 @@ La app genera credenciales TURN temporales automaticamente desde `/api/rtc-confi
 2. En `Environment Variables` agrega:
 
 - `DATABASE_URL`
-- `APP_ORIGIN`
 - `NEON_AUTH_BASE_URL`
+- `NEON_AUTH_JWKS_URL`
 - `TURN_KEY_ID`
 - `TURN_KEY_API_TOKEN`
 - `TURN_TTL_SECONDS` (opcional)

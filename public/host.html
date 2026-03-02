@@ -334,7 +334,9 @@
     </section>
   </main>
 
-  <script>
+  <script type="module">
+    import { getStoredToken, signOut, syncSession } from './auth-client.js';
+
     const statusEl = document.getElementById('status');
     const roomEl = document.getElementById('room');
     const cameraNameEl = document.getElementById('cameraName');
@@ -365,7 +367,11 @@
     }
 
     async function api(path, method = 'GET', body) {
+      const token = getStoredToken();
       const options = { method, headers: {} };
+      if (token) {
+        options.headers.Authorization = `Bearer ${token}`;
+      }
       if (body) {
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify(body);
@@ -389,8 +395,8 @@
 
     async function ensureAuth() {
       try {
-        const response = await api('/api/auth/session');
-        if (!response.authenticated) {
+        const session = await syncSession();
+        if (!session || !session.token) {
           goToLogin();
           return false;
         }
@@ -550,7 +556,7 @@
 
     async function logout() {
       try {
-        await api('/api/auth/sign-out', 'POST', {});
+        await signOut();
       } catch (_) {
         // Ignore errors and continue logout flow.
       }

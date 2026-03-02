@@ -1,4 +1,4 @@
-const { getNeonAuthBaseUrl, sendJson } = require('../_lib');
+const { getJwksUrl, getNeonAuthBaseUrl, sendJson } = require('../_lib');
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') {
@@ -8,5 +8,7 @@ module.exports = async (req, res) => {
 
   sendJson(res, 200, {
     authEnabled: Boolean(getNeonAuthBaseUrl()),
+    authUrl: getNeonAuthBaseUrl() || null,
+    jwksConfigured: Boolean(getJwksUrl()),
   });
 };

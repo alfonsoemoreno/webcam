@@ -188,7 +188,9 @@
     </section>
   </main>
 
-  <script>
+  <script type="module">
+    import { signIn, signUp, syncSession } from './auth-client.js';
+
     const statusEl = document.getElementById('status');
     const emailEl = document.getElementById('email');
     const passwordEl = document.getElementById('password');
@@ -217,33 +219,6 @@
       setStatus(signingIn ? 'Ingresa tus credenciales.' : 'Crea una cuenta para continuar.');
     }
 
-    async function api(path, payload) {
-      const res = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      let data = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-      if (!res.ok) {
-        const message =
-          (data && (data.error || data.message || data.msg)) ||
-          (data && data.details && (data.details.message || data.details.error)) ||
-          (data && Array.isArray(data.errors) && data.errors[0] && (data.errors[0].message || data.errors[0].error)) ||
-          'No se pudo completar la solicitud';
-        const error = new Error(message);
-        error.status = res.status;
-        error.payload = data;
-        throw error;
-      }
-      return data;
-    }
-
     async function submit() {
       const email = emailEl.value.trim();
       const password = passwordEl.value;
@@ -258,11 +233,10 @@
 
       try {
         if (mode === 'signin') {
-          await api('/api/auth/sign-in', { email, password });
+          await signIn(email, password);
         } else {
           const derivedName = email.split('@')[0].trim() || 'Usuario';
-          await api('/api/auth/sign-up', { email, password, name: derivedName });
-          await api('/api/auth/sign-in', { email, password });
+          await signUp(email, password, derivedName);
         }
 
         setStatus('Acceso concedido. Redirigiendo...', 'ok');
@@ -276,8 +250,8 @@
 
     async function checkSession() {
       try {
-        const res = await fetch('/api/auth/session', { credentials: 'include' });
-        if (res.ok) {
+        const session = await syncSession();
+        if (session && session.token) {
           location.replace(nextPath);
         }
       } catch (_) {

@@ -1,22 +1,7 @@
-const { callNeonAuth, copyResponseHeaders, sendJson } = require('../_lib');
+const { sendJson } = require('../_lib');
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Method not allowed' });
-    return;
-  }
-
-  try {
-    const result = await callNeonAuth({
-      req,
-      method: 'POST',
-      path: '/sign-out',
-      body: {},
-    });
-
-    copyResponseHeaders(result.headers, res);
-    sendJson(res, result.status, result.json);
-  } catch (err) {
-    sendJson(res, 500, { error: err.message || 'Server error' });
-  }
+  sendJson(res, 410, {
+    error: 'Deprecated endpoint. Use Neon Auth client SDK directly from frontend.',
+  });
 };
