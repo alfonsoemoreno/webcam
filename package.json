@@ -4,6 +4,7 @@
   "description": "Webcam security app with Vercel + Neon + Cloudflare TURN",
   "main": "server.js",
   "scripts": {
+    "build": "echo \"No build step required\"",
     "start": "node server.js",
     "dev": "vercel dev"
   },
