@@ -76,6 +76,9 @@ function getNeonAuthBaseUrl() {
 }
 
 function deriveOrigin(req) {
+  const forcedOrigin = String(process.env.APP_ORIGIN || '').trim();
+  if (forcedOrigin) return forcedOrigin.replace(/\/+$/, '');
+
   const originHeader = String(req.headers.origin || '').trim();
   if (originHeader) return originHeader;
 

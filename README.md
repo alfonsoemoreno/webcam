@@ -39,6 +39,7 @@ git push -u origin main
 2. Copia el endpoint base de Neon Auth (ejemplo: `https://<proyecto>.neon.tech/auth`).
 3. En Vercel agrega:
 - `NEON_AUTH_BASE_URL`
+- `APP_ORIGIN` (ejemplo: `https://tu-app.vercel.app`)
 
 La app usa login en `https://TU_APP_VERCEL/login.html` y protege todos los endpoints de streaming con sesion activa.
 
@@ -62,6 +63,7 @@ La app genera credenciales TURN temporales automaticamente desde `/api/rtc-confi
 2. En `Environment Variables` agrega:
 
 - `DATABASE_URL`
+- `APP_ORIGIN`
 - `NEON_AUTH_BASE_URL`
 - `TURN_KEY_ID`
 - `TURN_KEY_API_TOKEN`
