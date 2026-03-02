@@ -208,6 +208,7 @@ module.exports = {
   STALE_SECONDS,
   getSql,
   getNeonAuthBaseUrl,
+  deriveOrigin,
   isActiveDate,
   parseJsonBody,
   sendJson,
