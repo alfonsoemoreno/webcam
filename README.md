@@ -69,6 +69,10 @@ La app genera credenciales TURN temporales automaticamente desde `/api/rtc-confi
 - `NEON_AUTH_JWKS_URL`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN` (con permisos de analytics read para GraphQL)
+- `CLOUDFLARE_HARD_LIMIT_ENABLED` (`true`/`false`)
+- `CLOUDFLARE_HARD_LIMIT_PERCENT` (default `99`)
+- `CLOUDFLARE_HARD_LIMIT_FAIL_CLOSED` (default `true`)
+- `CLOUDFLARE_USAGE_CACHE_MS` (default `60000`)
 - `TURN_KEY_ID`
 - `TURN_KEY_API_TOKEN`
 - `TURN_TTL_SECONDS` (opcional)

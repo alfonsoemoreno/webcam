@@ -1,4 +1,5 @@
 const {
+  assertTransmissionAllowed,
   STALE_SECONDS,
   getSql,
   getUserIdFromClaims,
@@ -35,6 +36,9 @@ module.exports = async (req, res) => {
       sendJson(res, 400, { error: 'Invalid role' });
       return;
     }
+
+    const transmissionAllowed = await assertTransmissionAllowed(res);
+    if (!transmissionAllowed) return;
 
     const cameraRows = await sql`
       SELECT ch.host_client_id, ch.camera_name, c.last_seen

@@ -1,4 +1,5 @@
 const {
+  assertTransmissionAllowed,
   getSql,
   getUserIdFromClaims,
   parseJsonBody,
@@ -25,6 +26,9 @@ module.exports = async (req, res) => {
       sendJson(res, 401, { error: 'Unauthorized: missing user id in token' });
       return;
     }
+
+    const transmissionAllowed = await assertTransmissionAllowed(res);
+    if (!transmissionAllowed) return;
 
     const sql = getSql();
     const { room: roomRaw, from, to, type, payload } = await parseJsonBody(req);

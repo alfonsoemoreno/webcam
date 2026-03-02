@@ -2,6 +2,13 @@ const crypto = require('crypto');
 const { neon } = require('@neondatabase/serverless');
 
 const STALE_SECONDS = 45;
+const CLOUDFLARE_GRAPHQL_ENDPOINT = 'https://api.cloudflare.com/client/v4/graphql';
+const CLOUDFLARE_FREE_TIER_GB = 1000;
+
+let cloudflareUsageCache = {
+  fetchedAt: 0,
+  data: null,
+};
 
 function getSql() {
   const { DATABASE_URL } = process.env;
@@ -98,6 +105,167 @@ function getNeonAuthBaseUrl() {
 
 function getJwksUrl() {
   return String(process.env.NEON_AUTH_JWKS_URL || '').trim();
+}
+
+function getCloudflareHardLimitPercent() {
+  const raw = Number(process.env.CLOUDFLARE_HARD_LIMIT_PERCENT || 99);
+  if (Number.isNaN(raw)) return 99;
+  return Math.max(1, Math.min(100, raw));
+}
+
+function getCloudflareCacheMs() {
+  const raw = Number(process.env.CLOUDFLARE_USAGE_CACHE_MS || 60000);
+  if (Number.isNaN(raw)) return 60000;
+  return Math.max(5000, raw);
+}
+
+function cloudflareLimitEnabled() {
+  return String(process.env.CLOUDFLARE_HARD_LIMIT_ENABLED || 'true').toLowerCase() !== 'false';
+}
+
+function cloudflareFailClosed() {
+  return String(process.env.CLOUDFLARE_HARD_LIMIT_FAIL_CLOSED || 'true').toLowerCase() !== 'false';
+}
+
+function getCloudflareMonthRangeUtc(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  const start = new Date(Date.UTC(year, month, 1));
+  const end = new Date(Date.UTC(year, month + 1, 1) - 1);
+  return {
+    from: start.toISOString().slice(0, 10),
+    to: end.toISOString().slice(0, 10),
+  };
+}
+
+function bytesToGb(bytes) {
+  return Number((bytes / (1024 ** 3)).toFixed(3));
+}
+
+async function fetchCloudflareMonthlyUsage({ forceRefresh = false } = {}) {
+  const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+  const apiToken = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
+  if (!accountId || !apiToken) {
+    throw new Error('Missing Cloudflare config: CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN');
+  }
+
+  const now = Date.now();
+  if (!forceRefresh && cloudflareUsageCache.data && now - cloudflareUsageCache.fetchedAt < getCloudflareCacheMs()) {
+    return cloudflareUsageCache.data;
+  }
+
+  const { from, to } = getCloudflareMonthRangeUtc();
+  const query = `
+    query TurnMonthlyUsage($accountId: String!, $dateFrom: Date!, $dateTo: Date!) {
+      viewer {
+        accounts(filter: { accountTag: $accountId }) {
+          callsTurnUsageAdaptiveGroups(
+            filter: { date_geq: $dateFrom, date_leq: $dateTo }
+            limit: 10000
+          ) {
+            sum {
+              egressBytes
+              ingressBytes
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(CLOUDFLARE_GRAPHQL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        accountId,
+        dateFrom: from,
+        dateTo: to,
+      },
+    }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok || payload.errors) {
+    throw new Error(
+      `Cloudflare GraphQL error (${response.status}): ${JSON.stringify(payload.errors || payload).slice(0, 500)}`
+    );
+  }
+
+  const groups = payload?.data?.viewer?.accounts?.[0]?.callsTurnUsageAdaptiveGroups || [];
+  let egressBytes = 0;
+  let ingressBytes = 0;
+  for (const group of groups) {
+    egressBytes += Number(group?.sum?.egressBytes || 0);
+    ingressBytes += Number(group?.sum?.ingressBytes || 0);
+  }
+
+  const egressGb = bytesToGb(egressBytes);
+  const ingressGb = bytesToGb(ingressBytes);
+  const usagePercent = Number(Math.min(100, (egressGb / CLOUDFLARE_FREE_TIER_GB) * 100).toFixed(2));
+  const remainingGb = Number(Math.max(0, CLOUDFLARE_FREE_TIER_GB - egressGb).toFixed(3));
+
+  const data = {
+    period: { from, to, timezone: 'UTC' },
+    freeTierGb: CLOUDFLARE_FREE_TIER_GB,
+    egressBytes,
+    ingressBytes,
+    egressGb,
+    ingressGb,
+    usagePercent,
+    remainingGb,
+    estimatedOverageGb: Number(Math.max(0, egressGb - CLOUDFLARE_FREE_TIER_GB).toFixed(3)),
+  };
+
+  cloudflareUsageCache = {
+    fetchedAt: now,
+    data,
+  };
+
+  return data;
+}
+
+async function getCloudflareTransmissionState() {
+  if (!cloudflareLimitEnabled()) {
+    return { enabled: false, blocked: false, thresholdPercent: getCloudflareHardLimitPercent(), usage: null };
+  }
+
+  const hasConfig =
+    String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim() &&
+    String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
+  if (!hasConfig) {
+    return { enabled: false, blocked: false, thresholdPercent: getCloudflareHardLimitPercent(), usage: null };
+  }
+
+  const usage = await fetchCloudflareMonthlyUsage();
+  const thresholdPercent = getCloudflareHardLimitPercent();
+  const blocked = usage.usagePercent >= thresholdPercent;
+  return { enabled: true, blocked, thresholdPercent, usage };
+}
+
+async function assertTransmissionAllowed(res) {
+  try {
+    const state = await getCloudflareTransmissionState();
+    if (!state.enabled || !state.blocked) return true;
+    sendJson(res, 429, {
+      error: `Transmission blocked: monthly usage ${state.usage.usagePercent}% reached limit ${state.thresholdPercent}%`,
+      usage: state.usage,
+      thresholdPercent: state.thresholdPercent,
+      blocked: true,
+    });
+    return false;
+  } catch (err) {
+    if (!cloudflareFailClosed()) return true;
+    sendJson(res, 503, {
+      error: `Transmission safety lock active: ${err.message}`,
+      blocked: true,
+    });
+    return false;
+  }
 }
 
 function decodeBase64Url(value) {
@@ -353,6 +521,10 @@ module.exports = {
   getSql,
   getNeonAuthBaseUrl,
   getJwksUrl,
+  getCloudflareHardLimitPercent,
+  getCloudflareTransmissionState,
+  fetchCloudflareMonthlyUsage,
+  assertTransmissionAllowed,
   getUserIdFromClaims,
   toScopedRoom,
   fromScopedRoom,

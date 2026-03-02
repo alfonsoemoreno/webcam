@@ -577,6 +577,31 @@
         return;
       }
 
+      if (msg.type === 'quota-blocked') {
+        const usagePercent = msg.payload?.usagePercent;
+        const thresholdPercent = msg.payload?.thresholdPercent;
+        setStatus(
+          `Transmision bloqueada por cuota Cloudflare (${usagePercent}% >= ${thresholdPercent}%).`
+        );
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          stream = null;
+          localVideo.srcObject = null;
+        }
+        for (const [viewerId, pc] of peers.entries()) {
+          pc.close();
+          peers.delete(viewerId);
+          pendingIceByViewer.delete(viewerId);
+          removeTalkbackAudio(viewerId);
+        }
+        hostId = null;
+        return;
+      }
+
       if (msg.type === 'ice') {
         const viewerId = msg.from;
         const pc = peers.get(viewerId);
@@ -643,6 +668,10 @@
       } catch (err) {
         if (err.message === 'Room already has a host' && !forceTakeover) {
           setStatus('ID camara ocupado. Usa \"Forzar control\" para reemplazar el host actual.');
+          return;
+        }
+        if (/Transmission blocked/.test(err.message)) {
+          setStatus('Bloqueado por cuota mensual Cloudflare (>= 99%).');
           return;
         }
         setStatus(`No se pudo iniciar: ${err.message}`);

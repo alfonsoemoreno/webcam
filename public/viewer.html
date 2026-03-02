@@ -531,6 +531,33 @@
         return;
       }
 
+      if (msg.type === 'quota-blocked') {
+        const usagePercent = msg.payload?.usagePercent;
+        const thresholdPercent = msg.payload?.thresholdPercent;
+        setStatus(
+          `Transmision bloqueada por cuota Cloudflare (${usagePercent}% >= ${thresholdPercent}%).`
+        );
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        if (viewerId) {
+          try {
+            await api('/api/leave', 'POST', { room, clientId: viewerId });
+          } catch (_) {
+            // ignore
+          }
+        }
+        viewerId = null;
+        if (pc) {
+          pc.close();
+          pc = null;
+        }
+        pendingHostIce = [];
+        remoteVideo.srcObject = null;
+        return;
+      }
+
       if (msg.type === 'ice' && pc && msg.payload) {
         if (pc.remoteDescription) {
           await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
@@ -581,6 +608,10 @@
         setStatus(joined.hasHost ? 'Conectado, esperando stream...' : 'Sin host activo en este room');
         pollTimer = setInterval(poll, 1000);
       } catch (err) {
+        if (/Transmission blocked/.test(err.message)) {
+          setStatus('Bloqueado por cuota mensual Cloudflare (>= 99%).');
+          return;
+        }
         setStatus(`No se pudo conectar: ${err.message}`);
       }
     }

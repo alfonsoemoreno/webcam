@@ -1,4 +1,5 @@
 const {
+  getCloudflareTransmissionState,
   getSql,
   getRoomFromQuery,
   getUserIdFromClaims,
@@ -37,6 +38,26 @@ module.exports = async (req, res) => {
     if (!exists) {
       sendJson(res, 404, { error: 'Client not found' });
       return;
+    }
+
+    try {
+      const quotaState = await getCloudflareTransmissionState();
+      if (quotaState.enabled && quotaState.blocked) {
+        sendJson(res, 200, {
+          messages: [
+            {
+              type: 'quota-blocked',
+              payload: {
+                usagePercent: quotaState.usage?.usagePercent,
+                thresholdPercent: quotaState.thresholdPercent,
+              },
+            },
+          ],
+        });
+        return;
+      }
+    } catch (_) {
+      // If quota state cannot be loaded, normal polling continues.
     }
 
     const rows = await sql`
